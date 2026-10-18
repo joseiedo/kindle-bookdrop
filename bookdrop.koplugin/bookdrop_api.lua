@@ -56,7 +56,7 @@ Api.__index = Api
 
 --- opts: root, lfs, web_dir, hooks = { bookInfo(abs), coverFile(abs, mtime), queueCovers(list),
 ---       deleteBook(abs), folderRenamed(old_abs, new_abs), changed(),
----       diskUsage(root) -> { total, used, free } in bytes }
+---       diskUsage(root) -> { total, used, free } in bytes, sidecar(abs) -> settings table }
 function Api.new(opts)
     local self = setmetatable(opts, Api)
     self.hooks = self.hooks or {}
@@ -153,6 +153,39 @@ function Api:purge(abs)
         end
     end
     return lfs.rmdir(abs)
+end
+
+--- Highlights from a book's sidecar settings, in reading order.
+--- Handles the current `annotations` list and the older `highlight` table.
+function Api:highlights(abs)
+    local data = self.hooks.sidecar and self.hooks.sidecar(abs)
+    local list = {}
+    if type(data) ~= "table" then return list end
+    local function add(item, page)
+        if type(item) ~= "table" or type(item.text) ~= "string" or item.text == "" then return end
+        table.insert(list, {
+            text = item.text,
+            note = type(item.note) == "string" and item.note ~= "" and item.note or nil,
+            chapter = item.chapter,
+            page = item.pageref or item.pageno or page,
+            color = item.color,
+            datetime = item.datetime,
+        })
+    end
+    if type(data.annotations) == "table" then
+        for _, a in ipairs(data.annotations) do
+            -- Bookmarks have no drawer; only highlights do
+            if a.drawer then add(a) end
+        end
+    elseif type(data.highlight) == "table" then
+        local pages = {}
+        for page in pairs(data.highlight) do table.insert(pages, page) end
+        table.sort(pages, function(a, b) return (tonumber(a) or 0) < (tonumber(b) or 0) end)
+        for _, page in ipairs(pages) do
+            for _, hl in ipairs(data.highlight[page]) do add(hl, page) end
+        end
+    end
+    return list
 end
 
 function Api:storage()
@@ -259,6 +292,12 @@ function Api:handle(req)
                 return string.format("%%%02X", c:byte())
             end),
         } }
+    end
+
+    if m == "GET" and p == "/api/highlights" then
+        local abs, rel = self:abs(q.path)
+        if not abs or rel == "" or self:mode(abs) ~= "file" then return text(404, "Not found") end
+        return jsonResponse(200, { path = rel, highlights = json.array(self:highlights(abs)) })
     end
 
     if m == "DELETE" and p == "/api/books" then

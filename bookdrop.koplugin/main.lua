@@ -157,6 +157,14 @@ function hooks.folderRenamed(old_abs, new_abs)
     end
 end
 
+function hooks.sidecar(abs)
+    -- DocSettings finds the sidecar wherever "Book metadata location" puts it
+    local ok, DocSettings = pcall(require, "docsettings")
+    if not ok or not DocSettings:hasSidecarFile(abs) then return nil end
+    local opened, settings = pcall(DocSettings.open, DocSettings, abs)
+    return opened and settings and settings.data
+end
+
 local function refreshFileManager()
     local ok, FileManager = pcall(require, "apps/filemanager/filemanager")
     if ok and FileManager.instance then

@@ -179,7 +179,7 @@ main { padding: 28px 0 120px; }
 }
 .selecting .check { display: grid; }
 .selecting .actions { display: none; }
-.selecting .book { cursor: pointer; }
+.book { cursor: pointer; }
 .book.selected .check { background: var(--accent); border-color: var(--accent); }
 .book.selected .cover { outline: 3px solid var(--accent); outline-offset: 3px; }
 .check svg { width: 14px; height: 14px; opacity: 0; }
@@ -275,6 +275,30 @@ dialog h3 { font: 600 20px/1.3 var(--serif); margin: 0 0 8px; }
 dialog p { margin: 0 0 20px; color: var(--ink-soft); overflow-wrap: anywhere; }
 dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background: var(--paper); border-radius: 6px; padding: 9px 12px; margin-bottom: 20px; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; }
+/* Highlights panel */
+dialog.book-dlg { width: min(680px, calc(100vw - 32px)); max-height: min(86vh, 900px); padding: 0; }
+dialog.book-dlg[open] { display: flex; flex-direction: column; }
+.book-dlg header { display: grid; grid-template-columns: 64px 1fr auto; gap: 16px; align-items: start; padding: 24px 24px 18px; border-bottom: 1px solid var(--rule); }
+.book-dlg header .cover { width: 64px; }
+.book-dlg header .placeholder { padding: 6px; }
+.book-dlg header .placeholder > *, .book-dlg header .ext { display: none; }
+.book-dlg h3 { margin: 0 0 4px; overflow-wrap: anywhere; }
+.book-dlg .by { color: var(--ink-soft); font-size: 14px; }
+.book-dlg .count { color: var(--ink-soft); font-size: 13px; margin-top: 6px; }
+.book-dlg .close { background: none; box-shadow: none; color: var(--ink-soft); }
+.book-dlg .close:hover { background: var(--paper); color: var(--ink); }
+.hl-list { list-style: none; margin: 0; padding: 8px 24px 24px; overflow: auto; }
+.hl { padding: 16px 0; border-bottom: 1px solid var(--rule); }
+.hl:last-child { border-bottom: 0; }
+.hl blockquote {
+  margin: 0; padding-left: 14px; border-left: 3px solid var(--hl, var(--rule));
+  font: 16px/1.55 var(--serif); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.hl .note { margin: 10px 0 0 17px; font-size: 14px; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.hl .note::before { content: "Note: "; font-weight: 600; }
+.hl .where { margin: 8px 0 0 17px; color: var(--ink-soft); font-size: 12px; }
+.hl-empty { padding: 32px 24px; color: var(--ink-soft); text-align: center; margin: 0; }
+
 .toast {
   position: fixed; left: 50%; top: 20px; transform: translate(-50%, -20px); z-index: 60;
   background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 8px; font-size: 14px;
@@ -397,6 +421,19 @@ dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background
   </div>
 </dialog>
 
+<dialog id="book-dlg" class="book-dlg" aria-labelledby="book-dlg-title">
+  <header>
+    <div id="book-dlg-cover"></div>
+    <div>
+      <h3 id="book-dlg-title"></h3>
+      <div class="by" id="book-dlg-by"></div>
+      <div class="count" id="book-dlg-count"></div>
+    </div>
+    <button class="icon-btn close" type="button" id="book-dlg-close" aria-label="Close"></button>
+  </header>
+  <ul class="hl-list" id="hl-list"></ul>
+</dialog>
+
 <div class="toast" id="toast" role="status"></div>
 
 <script>
@@ -405,6 +442,7 @@ dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background
   const ICON = {
     download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
     trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>',
   };
   // Bookcloth tones for books without a cover
@@ -698,8 +736,52 @@ dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background
       const ok = await confirmDelete(`Delete “${titleOf(b)}”?`,
         "It will be removed from the Kindle, together with its reading progress and highlights.");
       if (ok) deleteBooks([path]);
+      return;
     }
+    if (!e.target.closest(".actions")) openBook(path);
   };
+
+  // Highlights panel. Colors are KOReader's highlight color names.
+  const HL_COLORS = {
+    yellow: "#e8c33a", red: "#d9534f", orange: "#e8873a", green: "#5aa55a", olive: "#8a9a3a",
+    cyan: "#3ab0c4", blue: "#4a7fd4", purple: "#9a5ac4", gray: "#9a9fa6",
+  };
+  const fmtDate = (dt) => {
+    const d = dt && new Date(dt.replace(" ", "T"));
+    return d && !isNaN(d) ? d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "";
+  };
+  let openPath = null;
+  async function openBook(path) {
+    const b = state.books.find((x) => x.path === path);
+    if (!b) return;
+    openPath = path;
+    $("book-dlg-cover").innerHTML = coverHTML(b);
+    $("book-dlg-title").textContent = titleOf(b);
+    $("book-dlg-by").textContent = b.authors || "";
+    $("book-dlg-count").textContent = "Loading highlights…";
+    $("hl-list").innerHTML = "";
+    $("book-dlg").showModal();
+    $("hl-list").scrollTop = 0;
+    let list;
+    try { list = (await api("GET", "/api/highlights?path=" + enc(path))).highlights; }
+    catch (e) { if (openPath === path) $("book-dlg-count").textContent = "Could not load highlights"; return; }
+    if (openPath !== path) return;
+    $("book-dlg-count").textContent = list.length === 1 ? "1 highlight" : `${list.length} highlights`;
+    $("hl-list").innerHTML = list.length
+      ? list.map((h) => {
+          const where = [h.chapter, h.page != null ? `p. ${h.page}` : "", fmtDate(h.datetime)].filter(Boolean).join(" · ");
+          const color = HL_COLORS[h.color] ? ` style="--hl:${HL_COLORS[h.color]}"` : "";
+          return `<li class="hl"><blockquote${color}>${esc(h.text)}</blockquote>`
+            + (h.note ? `<p class="note">${esc(h.note)}</p>` : "")
+            + (where ? `<p class="where">${esc(where)}</p>` : "") + "</li>";
+        }).join("")
+      : `<li class="hl-empty">No highlights in this book yet.</li>`;
+  }
+  $("book-dlg-close").innerHTML = ICON.close;
+  $("book-dlg-close").onclick = () => $("book-dlg").close();
+  $("book-dlg").onclose = () => { openPath = null; };
+  // Click on the backdrop closes
+  $("book-dlg").onclick = (e) => { if (e.target === $("book-dlg")) $("book-dlg").close(); };
 
   // Folder name dialog, shared by New folder and Rename
   let nameDlgSubmit = null;

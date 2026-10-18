@@ -22,6 +22,14 @@ local api = Api.new{
             -- df -k reports KiB; the API reports bytes, like KOReader's util.diskUsage()
             return total and { total = total * 1024, used = used * 1024, free = free * 1024 }
         end,
+        -- KOReader's default sidecar location: "Book.epub" -> "Book.sdr/metadata.epub.lua"
+        sidecar = function(abs)
+            local stem, ext = abs:match("^(.*)%.([^./]+)$")
+            local chunk = stem and loadfile(stem .. ".sdr/metadata." .. ext .. ".lua")
+            if not chunk then return nil end
+            local ok, data = pcall(setfenv(chunk, {}))
+            return ok and data or nil
+        end,
     },
 }
 local server = Server.new{
