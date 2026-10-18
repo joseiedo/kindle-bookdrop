@@ -55,7 +55,8 @@ local Api = {}
 Api.__index = Api
 
 --- opts: root, lfs, web_dir, hooks = { bookInfo(abs), coverFile(abs, mtime), queueCovers(list),
----       deleteBook(abs), folderRenamed(old_abs, new_abs), changed(), diskUsage(root) }
+---       deleteBook(abs), folderRenamed(old_abs, new_abs), changed(),
+---       diskUsage(root) -> { total, used, free } in bytes }
 function Api.new(opts)
     local self = setmetatable(opts, Api)
     self.hooks = self.hooks or {}

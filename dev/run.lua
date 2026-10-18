@@ -19,7 +19,8 @@ local api = Api.new{
             local p = io.popen("df -k '" .. dir .. "' | tail -1")
             local total, used, free = p:read("*a"):match("%S+%s+(%d+)%s+(%d+)%s+(%d+)")
             p:close()
-            return total and { total = tonumber(total), used = tonumber(used), free = tonumber(free) }
+            -- df -k reports KiB; the API reports bytes, like KOReader's util.diskUsage()
+            return total and { total = total * 1024, used = used * 1024, free = free * 1024 }
         end,
     },
 }

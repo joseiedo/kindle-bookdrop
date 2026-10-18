@@ -472,8 +472,7 @@ dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background
   function renderStorage(s) {
     if (!s || !s.total) { $("storage").hidden = true; return; }
     $("storage").hidden = false;
-    // df reports KiB
-    $("storage-text").textContent = `${fmtSize(s.free * 1024)} free of ${fmtSize(s.total * 1024)}`;
+    $("storage-text").textContent = `${fmtSize(s.free)} free of ${fmtSize(s.total)}`;
     $("storage-bar").style.width = Math.min(100, (s.used / s.total) * 100).toFixed(1) + "%";
   }
 
