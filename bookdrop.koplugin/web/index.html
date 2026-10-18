@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kindle Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #e6e7e3;
+  --sheet: #f3f3f0;
+  --ink: #23262b;
+  --ink-soft: #5c6169;
+  --rule: #c9cbc5;
+  --accent: #2b4c9b;
+  --accent-ink: #ffffff;
+  --danger: #a3313a;
+  --shadow: 0 1px 0 rgba(35, 38, 43, .08), 0 6px 14px -8px rgba(35, 38, 43, .45);
+  --serif: "Literata", Georgia, "Times New Roman", serif;
+  --sans: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1b1d21;
+    --sheet: #24272c;
+    --ink: #e4e5e1;
+    --ink-soft: #9a9fa6;
+    --rule: #3a3e45;
+    --accent: #8fa8e8;
+    --accent-ink: #14213f;
+    --danger: #e0727a;
+    --shadow: 0 1px 0 rgba(0, 0, 0, .3), 0 8px 18px -8px rgba(0, 0, 0, .8);
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 var(--sans);
+  min-height: 100vh;
+}
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
+
+/* Header */
+header.top { padding: 40px 0 20px; }
+.top-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 32px; justify-content: space-between; }
+h1 {
+  font: 700 clamp(2.2rem, 5vw, 3.4rem)/1 var(--serif);
+  font-variation-settings: "opsz" 72;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.subtitle { color: var(--ink-soft); margin: 10px 0 0; font-size: 15px; }
+.top-actions { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.storage { min-width: 200px; font-size: 13px; color: var(--ink-soft); }
+.storage .bar { height: 4px; background: var(--rule); border-radius: 2px; overflow: hidden; margin-top: 6px; }
+.storage .bar span { display: block; height: 100%; background: var(--ink); }
+
+.btn {
+  border: 1px solid var(--rule);
+  background: var(--sheet);
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  display: inline-flex; align-items: center; gap: 8px;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--ink-soft); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--danger); }
+.btn.danger.solid { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn svg { width: 16px; height: 16px; }
+
+/* Toolbar */
+.toolbar {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  padding: 12px 0;
+}
+.toolbar .wrap { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.folders { display: flex; gap: 4px; flex-wrap: wrap; flex: 1 1 auto; }
+.folder {
+  border: 0; background: none; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  color: var(--ink-soft); font-weight: 500;
+}
+.folder:hover { color: var(--ink); }
+.folder[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.folder .count { opacity: .65; margin-left: 4px; font-size: 13px; }
+.search {
+  border: 1px solid var(--rule); background: var(--sheet); border-radius: 6px;
+  padding: 7px 12px; width: 220px; max-width: 100%;
+}
+select.sort { border: 1px solid var(--rule); background: var(--sheet); border-radius: 6px; padding: 7px 10px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: var(--sheet); padding: 7px 10px; cursor: pointer; color: var(--ink-soft); display: flex; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.seg svg { width: 16px; height: 16px; }
+
+/* Grid */
+main { padding: 28px 0 120px; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 32px 24px;
+  list-style: none; margin: 0; padding: 0;
+}
+.book { position: relative; min-width: 0; }
+.cover {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  border-radius: 2px 4px 4px 2px;
+  overflow: hidden;
+  background: var(--sheet);
+  box-shadow: var(--shadow);
+}
+.cover::after { /* spine crease */
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 7px;
+  background: linear-gradient(90deg, rgba(0,0,0,.18), rgba(255,255,255,.12) 45%, rgba(0,0,0,0));
+  pointer-events: none;
+}
+.cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.placeholder {
+  position: absolute; inset: 0; padding: 18px 14px 14px 18px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  color: rgba(255,255,255,.94);
+}
+.placeholder .pt {
+  font: 600 15px/1.25 var(--serif);
+  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.placeholder .pa { font-size: 12px; opacity: .8; }
+.placeholder .rule { height: 1px; background: currentColor; opacity: .4; margin: 10px 0; }
+.ext {
+  position: absolute; right: 6px; bottom: 6px;
+  font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  background: rgba(20, 22, 26, .78); color: #fff; padding: 2px 6px; border-radius: 3px;
+}
+.meta { padding-top: 10px; }
+.title {
+  font: 600 15px/1.3 var(--serif); margin: 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.author { color: var(--ink-soft); font-size: 13px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.size { color: var(--ink-soft); font-size: 12px; margin-top: 2px; }
+
+.actions {
+  position: absolute; top: 8px; right: 8px; display: flex; gap: 6px;
+  opacity: 0; transition: opacity .12s;
+}
+.book:hover .actions, .book:focus-within .actions { opacity: 1; }
+.icon-btn {
+  width: 32px; height: 32px; border-radius: 50%; border: 0; cursor: pointer;
+  display: grid; place-items: center;
+  background: rgba(255,255,255,.94); color: #23262b; box-shadow: 0 1px 4px rgba(0,0,0,.25);
+}
+.icon-btn:hover { background: #fff; }
+.icon-btn.del:hover { color: var(--danger); }
+.icon-btn svg { width: 16px; height: 16px; }
+@media (hover: none) { .actions { opacity: 1; } }
+
+.check {
+  position: absolute; top: 8px; left: 12px; width: 24px; height: 24px; border-radius: 50%;
+  border: 2px solid #fff; background: rgba(20,22,26,.35); display: none; place-items: center; color: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
+.selecting .check { display: grid; }
+.selecting .actions { display: none; }
+.selecting .book { cursor: pointer; }
+.book.selected .check { background: var(--accent); border-color: var(--accent); }
+.book.selected .cover { outline: 3px solid var(--accent); outline-offset: 3px; }
+.check svg { width: 14px; height: 14px; opacity: 0; }
+.book.selected .check svg { opacity: 1; }
+
+/* List view */
+.list .grid { grid-template-columns: 1fr; gap: 0; }
+.list .book { display: grid; grid-template-columns: 44px 1fr auto; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.list .cover { width: 44px; }
+.list .placeholder { padding: 4px; }
+.list .placeholder .pt, .list .placeholder .pa, .list .placeholder .rule, .list .ext { display: none; }
+.list .meta { padding: 0; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 120px; gap: 16px; align-items: baseline; }
+.list .title { -webkit-line-clamp: 1; }
+.list .author, .list .size { margin: 0; }
+.list .actions { position: static; opacity: 1; }
+.list .icon-btn { background: none; box-shadow: none; color: var(--ink-soft); }
+.list .icon-btn:hover { color: var(--ink); background: var(--sheet); }
+.list .check { position: static; display: none; border-color: var(--ink-soft); }
+.list.selecting .check { display: grid; }
+.list.selecting .book { grid-template-columns: 24px 44px 1fr; }
+.list .book.selected .cover { outline: none; }
+@media (max-width: 640px) {
+  .list .meta { grid-template-columns: 1fr; gap: 0; }
+}
+
+.empty {
+  border: 2px dashed var(--rule); border-radius: 10px; padding: 64px 24px; text-align: center; color: var(--ink-soft);
+}
+.empty h2 { font: 600 22px/1.3 var(--serif); color: var(--ink); margin: 0 0 8px; }
+.empty p { margin: 0 auto; max-width: 46ch; }
+
+/* Drop overlay: the one big moment */
+.drop {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--accent) 88%, transparent);
+  color: var(--accent-ink);
+  opacity: 0; pointer-events: none; transition: opacity .15s;
+}
+.drop.on { opacity: 1; }
+.drop-inner { text-align: center; padding: 24px; transform: scale(.96); transition: transform .2s; }
+.drop.on .drop-inner { transform: none; }
+.drop-inner strong { display: block; font: 700 clamp(2rem, 6vw, 4.5rem)/1.05 var(--serif); letter-spacing: -0.02em; }
+.drop-inner span { display: block; margin-top: 14px; font-size: 17px; opacity: .85; }
+
+/* Upload tray */
+.tray {
+  position: fixed; right: 20px; bottom: 20px; z-index: 40; width: min(380px, calc(100vw - 32px));
+  background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px;
+  box-shadow: 0 14px 40px -12px rgba(0,0,0,.45);
+  overflow: hidden; display: none;
+}
+.tray.on { display: block; }
+.tray-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--rule); font-weight: 600; }
+.tray-head button { border: 0; background: none; cursor: pointer; color: var(--ink-soft); font-weight: 500; }
+.tray ul { list-style: none; margin: 0; padding: 4px 0; max-height: 260px; overflow: auto; }
+.tray li { padding: 8px 16px; font-size: 13px; }
+.tray .fname { display: flex; justify-content: space-between; gap: 12px; }
+.tray .fname span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tray .state { color: var(--ink-soft); flex: none; }
+.tray .state.err { color: var(--danger); }
+.tray .state.ok { color: var(--accent); }
+.tray progress { width: 100%; height: 3px; appearance: none; border: 0; background: var(--rule); margin-top: 6px; display: block; }
+.tray progress::-webkit-progress-bar { background: var(--rule); }
+.tray progress::-webkit-progress-value { background: var(--accent); }
+.tray progress::-moz-progress-bar { background: var(--accent); }
+
+/* Selection bar */
+.selbar {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 41;
+  background: var(--ink); color: var(--paper); border-radius: 10px; padding: 10px 10px 10px 18px;
+  display: none; align-items: center; gap: 16px; box-shadow: 0 14px 40px -12px rgba(0,0,0,.6);
+}
+.selbar.on { display: flex; }
+.selbar .btn { background: transparent; color: var(--paper); border-color: rgba(255,255,255,.3); }
+.selbar .btn.danger.solid { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+/* Dialog + toast */
+dialog {
+  border: 0; border-radius: 12px; padding: 24px; width: min(420px, calc(100vw - 32px));
+  background: var(--sheet); color: var(--ink); box-shadow: 0 24px 60px -16px rgba(0,0,0,.5);
+}
+dialog::backdrop { background: rgba(20, 22, 26, .45); }
+dialog h3 { font: 600 20px/1.3 var(--serif); margin: 0 0 8px; }
+dialog p { margin: 0 0 20px; color: var(--ink-soft); overflow-wrap: anywhere; }
+dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background: var(--paper); border-radius: 6px; padding: 9px 12px; margin-bottom: 20px; }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.toast {
+  position: fixed; left: 50%; top: 20px; transform: translate(-50%, -20px); z-index: 60;
+  background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 8px; font-size: 14px;
+  opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; max-width: calc(100vw - 32px);
+}
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+.toast.err { background: var(--danger); color: #fff; }
+
+.offline { background: var(--danger); color: #fff; text-align: center; padding: 8px 16px; font-size: 14px; display: none; }
+.offline.on { display: block; }
+
+@media (max-width: 640px) {
+  .wrap { padding: 0 16px; }
+  header.top { padding-top: 28px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(min(112px, 40%), 1fr)); gap: 24px 16px; }
+  .search { width: 100%; order: 5; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="offline" id="offline">Can't reach the Kindle. Check that Bookdrop is still running and both devices are on the same Wi-Fi.</div>
+
+<header class="top">
+  <div class="wrap top-row">
+    <div>
+      <h1>Kindle library</h1>
+      <p class="subtitle" id="subtitle">Loading your books…</p>
+    </div>
+    <div class="top-actions">
+      <div class="storage" id="storage" hidden>
+        <div id="storage-text"></div>
+        <div class="bar"><span id="storage-bar"></span></div>
+      </div>
+      <button class="btn primary" id="add-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Add books
+      </button>
+      <input type="file" id="file-input" multiple hidden accept=".epub,.pdf,.mobi,.azw3,.azw,.kfx,.txt,.fb2,.cbz,.cbr,.djvu,.rtf,.doc,.docx,.html,.htm,.chm">
+    </div>
+  </div>
+</header>
+
+<nav class="toolbar" aria-label="Library controls">
+  <div class="wrap">
+    <div class="folders" id="folders" role="group" aria-label="Folders"></div>
+    <input class="search" id="search" type="search" placeholder="Search title or author" aria-label="Search books">
+    <select class="sort" id="sort" aria-label="Sort by">
+      <option value="added">Recently added</option>
+      <option value="title">Title</option>
+      <option value="author">Author</option>
+      <option value="size">Size</option>
+    </select>
+    <div class="seg" role="group" aria-label="View">
+      <button type="button" id="view-grid" aria-pressed="true" title="Covers">
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="9" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </button>
+      <button type="button" id="view-list" aria-pressed="false" title="List">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+    </div>
+    <button class="btn" type="button" id="select-btn">Select</button>
+    <button class="btn" type="button" id="folder-btn" title="New folder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5h5" stroke-linecap="round"/></svg>
+      New folder
+    </button>
+  </div>
+</nav>
+
+<main>
+  <div class="wrap" id="shelf">
+    <ul class="grid" id="grid"></ul>
+  </div>
+</main>
+
+<div class="drop" id="drop" aria-hidden="true">
+  <div class="drop-inner">
+    <strong>Drop to send to your Kindle</strong>
+    <span id="drop-target"></span>
+  </div>
+</div>
+
+<section class="tray" id="tray" aria-live="polite">
+  <div class="tray-head"><span id="tray-title">Uploading</span><button type="button" id="tray-close">Hide</button></div>
+  <ul id="tray-list"></ul>
+</section>
+
+<div class="selbar" id="selbar">
+  <span id="sel-count">0 selected</span>
+  <button class="btn" type="button" id="sel-all">Select all</button>
+  <button class="btn danger solid" type="button" id="sel-delete">Delete</button>
+  <button class="btn" type="button" id="sel-done">Done</button>
+</div>
+
+<dialog id="confirm">
+  <h3 id="confirm-title"></h3>
+  <p id="confirm-text"></p>
+  <div class="dlg-actions">
+    <button class="btn" type="button" value="cancel" id="confirm-cancel">Cancel</button>
+    <button class="btn danger solid" type="button" id="confirm-ok">Delete</button>
+  </div>
+</dialog>
+
+<dialog id="folder-dlg">
+  <h3>New folder</h3>
+  <p id="folder-dlg-where"></p>
+  <input type="text" id="folder-name" placeholder="Folder name" aria-label="Folder name">
+  <div class="dlg-actions">
+    <button class="btn" type="button" id="folder-cancel">Cancel</button>
+    <button class="btn primary" type="button" id="folder-ok">Create folder</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const ICON = {
+    download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>',
+  };
+  // Bookcloth tones for books without a cover
+  const CLOTH = ["#2f4a6d", "#6b2f3a", "#2f5a4a", "#5a4a2f", "#3d3a5c", "#5c3d2e", "#2e4f5c", "#4a2f5a"];
+
+  const state = {
+    books: [], folders: [], root: "books",
+    folder: null,          // null = all books, "" = top folder, "a/b" = subfolder
+    query: "", sort: "added", view: "grid",
+    selecting: false, selected: new Set(),
+    pollTries: 0,
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem("bookdrop") || "{}");
+    if (saved.sort) state.sort = saved.sort;
+    if (saved.view) state.view = saved.view;
+  } catch (e) {}
+  const persist = () => { try { localStorage.setItem("bookdrop", JSON.stringify({ sort: state.sort, view: state.view })); } catch (e) {} };
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const enc = encodeURIComponent;
+  const fmtSize = (n) => {
+    if (n == null) return "";
+    const u = ["B", "KB", "MB", "GB"]; let i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return (i ? n.toFixed(n < 10 ? 1 : 0) : n) + " " + u[i];
+  };
+  const stem = (name) => name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
+  const titleOf = (b) => b.title || stem(b.name);
+  const hash = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.codePointAt(0)) | 0; return Math.abs(h); };
+
+  let toastTimer;
+  function toast(msg, isErr) {
+    const t = $("toast");
+    t.textContent = msg; t.className = "toast on" + (isErr ? " err" : "");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = "toast", 3200);
+  }
+
+  async function api(method, path) {
+    const res = await fetch(path, { method });
+    if (!res.ok) throw new Error((await res.text()) || res.statusText);
+    return res.json();
+  }
+
+  let pollTimer;
+  async function load() {
+    try {
+      const data = await api("GET", "/api/books");
+      $("offline").classList.remove("on");
+      state.books = data.books; state.folders = data.folders; state.root = data.root;
+      if (state.folder && !state.folders.includes(state.folder)) state.folder = null;
+      renderStorage(data.storage);
+      render();
+      // Covers are extracted on the Kindle in the background; check back for them.
+      clearTimeout(pollTimer);
+      if (state.books.some((b) => b.cover === "pending") && state.pollTries++ < 40) {
+        pollTimer = setTimeout(load, 4000);
+      }
+    } catch (e) {
+      $("offline").classList.add("on");
+      $("subtitle").textContent = "Not connected";
+    }
+  }
+
+  function renderStorage(s) {
+    if (!s || !s.total) { $("storage").hidden = true; return; }
+    $("storage").hidden = false;
+    // df reports KiB
+    $("storage-text").textContent = `${fmtSize(s.free * 1024)} free of ${fmtSize(s.total * 1024)}`;
+    $("storage-bar").style.width = Math.min(100, (s.used / s.total) * 100).toFixed(1) + "%";
+  }
+
+  function visibleBooks() {
+    const q = state.query.trim().toLowerCase();
+    let list = state.books.filter((b) => {
+      if (state.folder !== null && b.folder !== state.folder) return false;
+      if (!q) return true;
+      return (titleOf(b) + " " + (b.authors || "") + " " + b.name).toLowerCase().includes(q);
+    });
+    const cmp = {
+      added: (a, b) => b.mtime - a.mtime,
+      title: (a, b) => titleOf(a).localeCompare(titleOf(b)),
+      author: (a, b) => (a.authors || "￿").localeCompare(b.authors || "￿") || titleOf(a).localeCompare(titleOf(b)),
+      size: (a, b) => b.size - a.size,
+    }[state.sort];
+    return list.sort(cmp);
+  }
+
+  function folderLabel(f) {
+    if (f === null) return "All books";
+    if (f === "") return state.root;
+    return f;
+  }
+
+  function renderFolders() {
+    const counts = new Map();
+    for (const b of state.books) counts.set(b.folder, (counts.get(b.folder) || 0) + 1);
+    const items = [null];
+    if (state.folders.length) items.push("", ...state.folders);
+    $("folders").innerHTML = items.map((f) => {
+      const n = f === null ? state.books.length : (counts.get(f) || 0);
+      return `<button type="button" class="folder" data-folder="${f === null ? "*" : esc(f)}" aria-pressed="${state.folder === f}">${esc(folderLabel(f))}<span class="count">${n}</span></button>`;
+    }).join("");
+  }
+
+  function coverHTML(b) {
+    const ph = `<div class="placeholder" style="background:${CLOTH[hash(b.path) % CLOTH.length]}">
+        <div><div class="pt">${esc(titleOf(b))}</div><div class="rule"></div></div>
+        <div class="pa">${esc(b.authors || "")}</div>
+      </div>`;
+    const img = b.cover === "ready"
+      ? `<img loading="lazy" alt="" src="/api/cover?path=${enc(b.path)}&v=${b.mtime}" onerror="this.remove()">`
+      : "";
+    return `<div class="cover">${ph}${img}<span class="ext">${esc(b.ext.toUpperCase())}</span></div>`;
+  }
+
+  function render() {
+    renderFolders();
+    const books = visibleBooks();
+    const total = state.books.length;
+    $("subtitle").textContent = total === 0
+      ? "No books yet"
+      : `${total} ${total === 1 ? "book" : "books"} in ${state.root}/` + (state.folders.length ? ` across ${state.folders.length + 1} folders` : "");
+    $("shelf").className = "wrap" + (state.view === "list" ? " list" : "") + (state.selecting ? " selecting" : "");
+    $("view-grid").setAttribute("aria-pressed", state.view === "grid");
+    $("view-list").setAttribute("aria-pressed", state.view === "list");
+    $("sort").value = state.sort;
+
+    if (!books.length) {
+      const where = state.folder === null ? "" : ` in ${folderLabel(state.folder)}`;
+      $("grid").innerHTML = state.query
+        ? `<li class="empty"><h2>No books match “${esc(state.query)}”</h2><p>Try a different title or author.</p></li>`
+        : `<li class="empty"><h2>No books${esc(where)} yet</h2><p>Drag EPUB, PDF or MOBI files anywhere on this page, or use Add books.</p></li>`;
+    } else {
+      $("grid").innerHTML = books.map((b) => `
+        <li class="book${state.selected.has(b.path) ? " selected" : ""}" data-path="${esc(b.path)}">
+          <span class="check" aria-hidden="true">${ICON.check}</span>
+          ${coverHTML(b)}
+          <div class="meta">
+            <p class="title" title="${esc(b.name)}">${esc(titleOf(b))}</p>
+            <div class="author">${esc(b.authors || (b.folder ? b.folder : ""))}</div>
+            <div class="size">${esc(b.ext.toUpperCase())}, ${fmtSize(b.size)}</div>
+          </div>
+          <div class="actions">
+            <a class="icon-btn" href="/api/download?path=${enc(b.path)}" title="Download to this computer" aria-label="Download ${esc(titleOf(b))}">${ICON.download}</a>
+            <button class="icon-btn del" type="button" data-del="${esc(b.path)}" title="Delete from Kindle" aria-label="Delete ${esc(titleOf(b))}">${ICON.trash}</button>
+          </div>
+        </li>`).join("");
+    }
+    renderSelbar();
+  }
+
+  function renderSelbar() {
+    $("selbar").classList.toggle("on", state.selecting);
+    const n = state.selected.size;
+    $("sel-count").textContent = `${n} selected`;
+    $("sel-delete").disabled = n === 0;
+    $("select-btn").textContent = state.selecting ? "Done" : "Select";
+  }
+
+  // Confirm dialog
+  function confirmDelete(title, text) {
+    return new Promise((resolve) => {
+      const d = $("confirm");
+      $("confirm-title").textContent = title;
+      $("confirm-text").textContent = text;
+      const done = (v) => { d.close(); resolve(v); };
+      $("confirm-ok").onclick = () => done(true);
+      $("confirm-cancel").onclick = () => done(false);
+      d.oncancel = () => resolve(false);
+      d.showModal();
+      $("confirm-cancel").focus();
+    });
+  }
+
+  async function deleteBooks(paths) {
+    let ok = 0, failed = 0;
+    for (const p of paths) {
+      try { await api("DELETE", "/api/books?path=" + enc(p)); ok++; state.selected.delete(p); }
+      catch (e) { failed++; }
+    }
+    await load();
+    if (failed) toast(`Deleted ${ok}, ${failed} could not be deleted`, true);
+    else toast(ok === 1 ? "Deleted 1 book" : `Deleted ${ok} books`);
+  }
+
+  // Uploads: one at a time, the Kindle handles a single stream best
+  const queue = [];
+  let uploading = false, trayItems = 0, trayDone = 0;
+  function uploadFolder() { return state.folder === null ? "" : state.folder; }
+
+  function enqueue(files) {
+    const folder = uploadFolder();
+    for (const file of files) {
+      const li = document.createElement("li");
+      li.innerHTML = `<div class="fname"><span>${esc(file.name)}</span><span class="state">Waiting</span></div><progress max="100" value="0"></progress>`;
+      $("tray-list").prepend(li);
+      queue.push({ file, folder, li });
+      trayItems++;
+    }
+    $("tray").classList.add("on");
+    updateTrayTitle();
+    pump();
+  }
+
+  function updateTrayTitle() {
+    $("tray-title").textContent = trayDone < trayItems ? `Uploading ${trayDone + 1} of ${trayItems}` : `Uploaded ${trayItems} ${trayItems === 1 ? "file" : "files"}`;
+  }
+
+  function pump() {
+    if (uploading || !queue.length) return;
+    uploading = true;
+    const { file, folder, li } = queue.shift();
+    const stateEl = li.querySelector(".state"), bar = li.querySelector("progress");
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", `/api/upload?folder=${enc(folder)}&name=${enc(file.name)}`);
+    xhr.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      const pct = Math.round((e.loaded / e.total) * 100);
+      bar.value = pct; stateEl.textContent = pct + "%";
+    };
+    const finish = (ok, msg) => {
+      stateEl.textContent = msg; stateEl.className = "state " + (ok ? "ok" : "err");
+      bar.value = 100; bar.style.display = ok ? "" : "none";
+      trayDone++; updateTrayTitle();
+      uploading = false;
+      if (queue.length) pump();
+      else { state.pollTries = 0; load(); }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) finish(true, "Added");
+      else finish(false, xhr.responseText || "Failed");
+    };
+    xhr.onerror = () => finish(false, "Connection lost");
+    stateEl.textContent = "0%";
+    xhr.send(file);
+  }
+
+  // Events
+  $("add-btn").onclick = () => $("file-input").click();
+  $("file-input").onchange = (e) => { enqueue([...e.target.files]); e.target.value = ""; };
+  $("tray-close").onclick = () => {
+    $("tray").classList.remove("on");
+    if (!queue.length && !uploading) { $("tray-list").innerHTML = ""; trayItems = trayDone = 0; }
+  };
+
+  $("folders").onclick = (e) => {
+    const btn = e.target.closest(".folder"); if (!btn) return;
+    const f = btn.dataset.folder;
+    state.folder = f === "*" ? null : f;
+    render();
+  };
+  $("search").oninput = (e) => { state.query = e.target.value; render(); };
+  $("sort").onchange = (e) => { state.sort = e.target.value; persist(); render(); };
+  $("view-grid").onclick = () => { state.view = "grid"; persist(); render(); };
+  $("view-list").onclick = () => { state.view = "list"; persist(); render(); };
+
+  const toggleSelecting = (on) => { state.selecting = on; if (!on) state.selected.clear(); render(); };
+  $("select-btn").onclick = () => toggleSelecting(!state.selecting);
+  $("sel-done").onclick = () => toggleSelecting(false);
+  $("sel-all").onclick = () => { visibleBooks().forEach((b) => state.selected.add(b.path)); render(); };
+  $("sel-delete").onclick = async () => {
+    const paths = [...state.selected];
+    const ok = await confirmDelete(`Delete ${paths.length} ${paths.length === 1 ? "book" : "books"}?`,
+      "They will be removed from the Kindle, together with their reading progress and highlights.");
+    if (ok) { await deleteBooks(paths); if (!state.selected.size) toggleSelecting(false); }
+  };
+
+  $("grid").onclick = async (e) => {
+    const li = e.target.closest(".book"); if (!li) return;
+    const path = li.dataset.path;
+    if (state.selecting) {
+      e.preventDefault();
+      state.selected.has(path) ? state.selected.delete(path) : state.selected.add(path);
+      li.classList.toggle("selected");
+      renderSelbar();
+      return;
+    }
+    if (e.target.closest("[data-del]")) {
+      const b = state.books.find((x) => x.path === path);
+      const ok = await confirmDelete(`Delete “${titleOf(b)}”?`,
+        "It will be removed from the Kindle, together with its reading progress and highlights.");
+      if (ok) deleteBooks([path]);
+    }
+  };
+
+  // New folder
+  $("folder-btn").onclick = () => {
+    const parent = uploadFolder();
+    $("folder-dlg-where").textContent = `Inside ${parent ? parent : state.root}/`;
+    $("folder-name").value = "";
+    $("folder-dlg").showModal();
+    $("folder-name").focus();
+  };
+  $("folder-cancel").onclick = () => $("folder-dlg").close();
+  const createFolder = async () => {
+    const name = $("folder-name").value.trim();
+    if (!name) return;
+    const parent = uploadFolder();
+    const path = parent ? parent + "/" + name : name;
+    try {
+      await api("POST", "/api/folder?path=" + enc(path));
+      $("folder-dlg").close();
+      state.folder = path;
+      await load();
+      toast(`Created folder ${name}`);
+    } catch (e) { toast(e.message, true); }
+  };
+  $("folder-ok").onclick = createFolder;
+  $("folder-name").onkeydown = (e) => { if (e.key === "Enter") createFolder(); };
+
+  // Page-wide drag and drop
+  let dragDepth = 0;
+  const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+  window.addEventListener("dragenter", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragDepth++;
+    const f = uploadFolder();
+    $("drop-target").textContent = `Saving into ${f ? f : state.root}/`;
+    $("drop").classList.add("on");
+  });
+  window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("drop").classList.remove("on"); } });
+  window.addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragDepth = 0; $("drop").classList.remove("on");
+    enqueue([...e.dataTransfer.files]);
+  });
+
+  window.addEventListener("beforeunload", (e) => { if (uploading || queue.length) { e.preventDefault(); e.returnValue = ""; } });
+  window.addEventListener("focus", () => { if (!uploading) load(); });
+
+  load();
+})();
+</script>
+</body>
+</html>
