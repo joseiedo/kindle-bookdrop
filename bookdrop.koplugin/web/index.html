@@ -205,6 +205,15 @@ main { padding: 28px 0 120px; }
   .list .meta { grid-template-columns: 1fr; gap: 0; }
 }
 
+.folder-head {
+  display: none; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px;
+  margin: 0 0 24px; padding-bottom: 14px; border-bottom: 1px solid var(--rule);
+}
+.folder-head.on { display: flex; }
+.folder-head h2 { font: 600 24px/1.25 var(--serif); margin: 0; overflow-wrap: anywhere; }
+.folder-head h2 .parent { color: var(--ink-soft); font-weight: 400; }
+.folder-head .tools { display: flex; gap: 8px; }
+
 .empty {
   border: 2px dashed var(--rule); border-radius: 10px; padding: 64px 24px; text-align: center; color: var(--ink-soft);
 }
@@ -339,6 +348,13 @@ dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background
 
 <main>
   <div class="wrap" id="shelf">
+    <div class="folder-head" id="folder-head">
+      <h2 id="folder-title"></h2>
+      <div class="tools">
+        <button class="btn" type="button" id="folder-rename">Rename</button>
+        <button class="btn danger" type="button" id="folder-delete">Delete folder</button>
+      </div>
+    </div>
     <ul class="grid" id="grid"></ul>
   </div>
 </main>
@@ -372,7 +388,7 @@ dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background
 </dialog>
 
 <dialog id="folder-dlg">
-  <h3>New folder</h3>
+  <h3 id="folder-dlg-title">New folder</h3>
   <p id="folder-dlg-where"></p>
   <input type="text" id="folder-name" placeholder="Folder name" aria-label="Folder name">
   <div class="dlg-actions">
@@ -516,6 +532,7 @@ dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background
     $("view-grid").setAttribute("aria-pressed", state.view === "grid");
     $("view-list").setAttribute("aria-pressed", state.view === "list");
     $("sort").value = state.sort;
+    renderFolderHead();
 
     if (!books.length) {
       const where = state.folder === null ? "" : ` in ${folderLabel(state.folder)}`;
@@ -541,6 +558,15 @@ dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background
     renderSelbar();
   }
 
+  // Actions for the open subfolder (the root and "All books" can't be renamed or deleted)
+  function renderFolderHead() {
+    const f = state.folder;
+    $("folder-head").classList.toggle("on", !!f);
+    if (!f) return;
+    const i = f.lastIndexOf("/");
+    $("folder-title").innerHTML = (i < 0 ? "" : `<span class="parent">${esc(f.slice(0, i + 1))}</span>`) + esc(f.slice(i + 1));
+  }
+
   function renderSelbar() {
     $("selbar").classList.toggle("on", state.selecting);
     const n = state.selected.size;
@@ -550,9 +576,10 @@ dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background
   }
 
   // Confirm dialog
-  function confirmDelete(title, text) {
+  function confirmDelete(title, text, okLabel = "Delete") {
     return new Promise((resolve) => {
       const d = $("confirm");
+      $("confirm-ok").textContent = okLabel;
       $("confirm-title").textContent = title;
       $("confirm-text").textContent = text;
       const done = (v) => { d.close(); resolve(v); };
@@ -675,30 +702,81 @@ dialog input[type=text] { width: 100%; border: 1px solid var(--rule); background
     }
   };
 
-  // New folder
-  $("folder-btn").onclick = () => {
-    const parent = uploadFolder();
-    $("folder-dlg-where").textContent = `Inside ${parent ? parent : state.root}/`;
-    $("folder-name").value = "";
+  // Folder name dialog, shared by New folder and Rename
+  let nameDlgSubmit = null;
+  function nameDialog({ title, where, value = "", okLabel, onOk }) {
+    $("folder-dlg-title").textContent = title;
+    $("folder-dlg-where").textContent = where;
+    $("folder-ok").textContent = okLabel;
+    $("folder-name").value = value;
+    nameDlgSubmit = onOk;
     $("folder-dlg").showModal();
     $("folder-name").focus();
-  };
-  $("folder-cancel").onclick = () => $("folder-dlg").close();
-  const createFolder = async () => {
+    $("folder-name").select();
+  }
+  const submitName = async () => {
     const name = $("folder-name").value.trim();
-    if (!name) return;
-    const parent = uploadFolder();
-    const path = parent ? parent + "/" + name : name;
+    if (!name || !nameDlgSubmit) return;
     try {
-      await api("POST", "/api/folder?path=" + enc(path));
+      await nameDlgSubmit(name);
       $("folder-dlg").close();
-      state.folder = path;
-      await load();
-      toast(`Created folder ${name}`);
     } catch (e) { toast(e.message, true); }
   };
-  $("folder-ok").onclick = createFolder;
-  $("folder-name").onkeydown = (e) => { if (e.key === "Enter") createFolder(); };
+  $("folder-cancel").onclick = () => $("folder-dlg").close();
+  $("folder-ok").onclick = submitName;
+  $("folder-name").onkeydown = (e) => { if (e.key === "Enter") submitName(); };
+
+  $("folder-btn").onclick = () => {
+    const parent = uploadFolder();
+    nameDialog({
+      title: "New folder", where: `Inside ${parent ? parent : state.root}/`, okLabel: "Create folder",
+      onOk: async (name) => {
+        const path = parent ? parent + "/" + name : name;
+        await api("POST", "/api/folder?path=" + enc(path));
+        state.folder = path;
+        await load();
+        toast(`Created folder ${name}`);
+      },
+    });
+  };
+
+  $("folder-rename").onclick = () => {
+    const f = state.folder;
+    const i = f.lastIndexOf("/"), old = f.slice(i + 1);
+    nameDialog({
+      title: "Rename folder", where: `${i < 0 ? state.root : f.slice(0, i)}/${old}`, value: old, okLabel: "Rename",
+      onOk: async (name) => {
+        if (name === old) return;
+        const res = await api("POST", `/api/folder/rename?path=${enc(f)}&name=${enc(name)}`);
+        state.folder = res.path;
+        state.selected.clear();
+        await load();
+        toast(`Renamed to ${name}`);
+      },
+    });
+  };
+
+  $("folder-delete").onclick = async () => {
+    const f = state.folder;
+    const inside = (p) => p.startsWith(f + "/");
+    const books = state.books.filter((b) => b.folder === f || inside(b.folder)).length;
+    const subs = state.folders.filter(inside).length;
+    const parts = [];
+    if (books) parts.push(`${books} ${books === 1 ? "book" : "books"}`);
+    if (subs) parts.push(`${subs} ${subs === 1 ? "subfolder" : "subfolders"}`);
+    const text = parts.length
+      ? `Its ${parts.join(" and ")} will be removed from the Kindle, together with their reading progress and highlights.`
+      : "The folder is empty.";
+    const name = f.slice(f.lastIndexOf("/") + 1);
+    if (!await confirmDelete(`Delete folder “${name}”?`, text, "Delete folder")) return;
+    try {
+      await api("DELETE", "/api/folder?path=" + enc(f));
+      state.folder = null;
+      state.selected.clear();
+      toast(`Deleted folder ${name}`);
+    } catch (e) { toast(e.message, true); }
+    await load();
+  };
 
   // Page-wide drag and drop
   let dragDepth = 0;

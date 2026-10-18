@@ -149,6 +149,14 @@ function hooks.deleteBook(abs)
     return true
 end
 
+function hooks.folderRenamed(old_abs, new_abs)
+    -- Same bookkeeping as FileManager:renameFile() for folders; sidecars move with the folder
+    for _, mod in ipairs{ "readhistory", "readcollection" } do
+        local ok, m = pcall(require, mod)
+        if ok and m and m.updateItemsByPath then pcall(m.updateItemsByPath, m, old_abs, new_abs) end
+    end
+end
+
 local function refreshFileManager()
     local ok, FileManager = pcall(require, "apps/filemanager/filemanager")
     if ok and FileManager.instance then

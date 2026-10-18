@@ -1,6 +1,6 @@
 # Bookdrop
 
-A KOReader plugin that lets you manage the Kindle's `books/` folder from a browser on any computer on the same Wi-Fi: see your books with covers, upload, download and delete them, and create folders. No USB cable needed.
+A KOReader plugin that lets you manage the Kindle's `books/` folder from a browser on any computer on the same Wi-Fi: see your books with covers, upload, download and delete them, and create, rename and delete folders. No USB cable needed.
 
 ## Install
 
@@ -11,7 +11,7 @@ A KOReader plugin that lets you manage the Kindle's `books/` folder from a brows
 
 1. In KOReader, open the top menu, then **Network (Wi-Fi icon) → Bookdrop → Bookdrop server**.
 2. A popup shows an address like `http://192.168.1.23:8080`. Open it in your computer's browser.
-3. Drag books onto the page to upload them. Hover over a book to download or delete it, or use **Select** to delete several at once.
+3. Drag books onto the page to upload them. Hover over a book to download or delete it, or use **Select** to delete several at once. Open a folder to rename or delete it (deleting a folder removes everything inside it).
 
 The server is a manual toggle: it only starts and stops when you tap it. It also goes down if the Kindle sleeps or KOReader exits. While it runs, the Kindle won't fall asleep on its own, so remember to turn it off to save battery. **Show address** in the same menu shows the address again.
 

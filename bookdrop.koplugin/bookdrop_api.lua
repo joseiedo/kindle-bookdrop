@@ -1,5 +1,6 @@
 --[[--
-HTTP routes for Bookdrop: list, upload, download, delete books under a root folder.
+HTTP routes for Bookdrop: list, upload, download, delete books and manage
+folders under a root folder.
 
 Kept free of KOReader UI dependencies so it can run on a desktop for testing;
 KOReader-specific behaviour (covers, metadata, sidecar cleanup, file browser
@@ -54,7 +55,7 @@ local Api = {}
 Api.__index = Api
 
 --- opts: root, lfs, web_dir, hooks = { bookInfo(abs), coverFile(abs, mtime), queueCovers(list),
----       deleteBook(abs), changed(), diskUsage(root) }
+---       deleteBook(abs), folderRenamed(old_abs, new_abs), changed(), diskUsage(root) }
 function Api.new(opts)
     local self = setmetatable(opts, Api)
     self.hooks = self.hooks or {}
@@ -119,6 +120,38 @@ function Api:scan()
         hooks.queueCovers(pending)
     end
     return books, folders
+end
+
+--- Delete a directory and everything in it. Books go through hooks.deleteBook
+--- so their reading progress, history and cached info go with them.
+function Api:purge(abs)
+    local lfs = self.lfs
+    local names = {}
+    local ok, iter, dir_obj = pcall(lfs.dir, abs)
+    if not ok then return nil, iter end
+    for name in iter, dir_obj do
+        if name ~= "." and name ~= ".." then table.insert(names, name) end
+    end
+    for _, name in ipairs(names) do
+        local child = abs .. "/" .. name
+        -- Don't follow symlinks out of the folder
+        local mode = lfs.symlinkattributes(child, "mode")
+        if mode == "directory" then
+            local purged, err = self:purge(child)
+            if not purged then return nil, err end
+        elseif mode then -- may already be gone, e.g. a sidecar removed with its book
+            local removed, err
+            if mode == "file" and BOOK_EXTS[extOf(name) or ""] and self.hooks.deleteBook then
+                removed = self.hooks.deleteBook(child)
+            else
+                removed, err = os.remove(child)
+            end
+            if not removed and lfs.symlinkattributes(child, "mode") then
+                return nil, err or ("cannot delete " .. name)
+            end
+        end
+    end
+    return lfs.rmdir(abs)
 end
 
 function Api:storage()
@@ -257,10 +290,30 @@ function Api:handle(req)
     if m == "DELETE" and p == "/api/folder" then
         local abs, rel = self:abs(q.path)
         if not abs or rel == "" or self:mode(abs) ~= "directory" then return text(404, "Not found") end
-        local ok, err = self.lfs.rmdir(abs)
-        if not ok then return text(409, "Folder is not empty: " .. tostring(err)) end
+        local ok, err = self:purge(abs)
         if self.hooks.changed then self.hooks.changed() end
+        if not ok then return text(500, "Could not delete folder: " .. tostring(err)) end
         return jsonResponse(200, { deleted = rel })
+    end
+
+    if m == "POST" and p == "/api/folder/rename" then
+        local abs, rel = self:abs(q.path)
+        if not abs or rel == "" or self:mode(abs) ~= "directory" then return text(404, "Not found") end
+        local name = q.name
+        if not validName(name) then return text(400, "Invalid folder name") end
+        local parent_rel = rel:match("^(.*)/[^/]+$")
+        local new_rel = parent_rel and parent_rel .. "/" .. name or name
+        local new_abs = self.root .. "/" .. new_rel
+        if new_rel == rel then return jsonResponse(200, { path = rel }) end
+        -- Case-only renames are fine on case-insensitive disks: target "exists" but is the same dir
+        if self:mode(new_abs) and new_rel:lower() ~= rel:lower() then
+            return text(409, "Already exists")
+        end
+        local ok, err = os.rename(abs, new_abs)
+        if not ok then return text(500, "Could not rename folder: " .. tostring(err)) end
+        if self.hooks.folderRenamed then self.hooks.folderRenamed(abs, new_abs) end
+        if self.hooks.changed then self.hooks.changed() end
+        return jsonResponse(200, { path = new_rel })
     end
 
     if p:sub(1, 5) == "/api/" then
