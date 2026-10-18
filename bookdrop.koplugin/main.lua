@@ -2,8 +2,8 @@
 Bookdrop: manage the books folder from a browser on another computer.
 
 Start it from the Network menu, open the shown address on your PC, and
-list, upload, download or delete books. Never starts on its own, and stops
-on suspend, on exit, when Wi-Fi drops, or after 15 idle minutes, to save battery.
+list, upload, download or delete books. Started and stopped by hand only;
+it also goes down when the device suspends or KOReader exits.
 ]]
 
 local DataStorage = require("datastorage")
@@ -25,7 +25,6 @@ local Server = require("bookdrop_server")
 local DEFAULT_ROOT = Device:isKindle() and "/mnt/us/books" or DataStorage:getDataDir() .. "/books"
 local COVER_CACHE = "/tmp/bookdrop-covers"
 local COVER_SPECS = { max_cover_w = 360, max_cover_h = 540 }
-local IDLE_STOP = 15 * 60 -- seconds without any request before stopping on its own
 
 local plugin_dir = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or "."
 
@@ -224,7 +223,6 @@ function Bookdrop:start()
     UIManager:insertZMQ(server)
     keepAwake(true)
     running = { server = server, port = self.port }
-    self:scheduleIdleCheck()
     logger.info("Bookdrop: serving", self.root, "on port", self.port)
     self:showAddress()
 end
@@ -235,25 +233,8 @@ function Bookdrop:stop()
     running.server:stop()
     firewall("D", running.port)
     keepAwake(false)
-    UIManager:unschedule(running.idle_check)
     running = nil
     logger.info("Bookdrop: stopped")
-end
-
-function Bookdrop:scheduleIdleCheck()
-    running.idle_check = function()
-        if not running then return end
-        if socket.gettime() - running.server.last_activity > IDLE_STOP then
-            self:stop()
-            UIManager:show(InfoMessage:new{
-                text = _("Bookdrop stopped after 15 minutes without use, to save battery."),
-                timeout = 10,
-            })
-        else
-            UIManager:scheduleIn(60, running.idle_check)
-        end
-    end
-    UIManager:scheduleIn(60, running.idle_check)
 end
 
 function Bookdrop:showAddress()
@@ -267,10 +248,9 @@ function Bookdrop:showAddress()
     UIManager:show(InfoMessage:new{ text = text })
 end
 
--- Battery: never keep serving through a suspend or after exit.
+-- The server can't outlive a suspend (Wi-Fi goes down) or KOReader itself.
 function Bookdrop:onSuspend() self:stop() end
 function Bookdrop:onExit() self:stop() end
-function Bookdrop:onNetworkDisconnected() self:stop() end
 
 function Bookdrop:addToMainMenu(menu_items)
     menu_items.bookdrop = {

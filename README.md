@@ -13,7 +13,7 @@ A KOReader plugin that lets you manage the Kindle's `books/` folder from a brows
 2. A popup shows an address like `http://192.168.1.23:8080`. Open it in your computer's browser.
 3. Drag books onto the page to upload them. Hover over a book to download or delete it, or use **Select** to delete several at once.
 
-To save battery, the server never starts on its own. It stops when the Kindle sleeps, when Wi-Fi drops, when KOReader exits, or after 15 minutes without use. **Show address** in the same menu shows the address again.
+The server is a manual toggle: it only starts and stops when you tap it. It also goes down if the Kindle sleeps or KOReader exits. While it runs, the Kindle won't fall asleep on its own, so remember to turn it off to save battery. **Show address** in the same menu shows the address again.
 
 Covers and titles come from KOReader's cover browser cache. Books it hasn't indexed yet get a plain placeholder cover; the Kindle extracts the real cover in the background and the page updates on its own.
 

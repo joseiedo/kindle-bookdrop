@@ -88,7 +88,6 @@ function Server.new(opts)
         openBody = opts.openBody,
         logger = opts.logger,
         clients = {},
-        last_activity = socket.gettime(),
     }, Server)
 end
 
@@ -295,10 +294,6 @@ function Server:waitEvent()
         if not c then break end
         c:settimeout(0)
         self.clients[c] = { sock = c, state = "head", buf = "", t = now }
-        self.last_activity = now
-    end
-    if next(self.clients) then
-        self.last_activity = now -- a long upload counts as activity
     end
     repeat
         local progressed = false
