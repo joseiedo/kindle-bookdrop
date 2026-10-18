@@ -1,41 +1,39 @@
 # Bookdrop
 
-A KOReader plugin that lets you manage the Kindle's `books/` folder from a browser on any computer on the same Wi-Fi: see your books with covers, upload, download and delete them, and create, rename and delete folders. No USB cable needed.
+A KOReader plugin to manage your Kindle's books from a browser over Wi-Fi: browse with covers, upload, download, delete, and create, rename or delete folders. No USB cable.
+
+![Bookdrop web UI](docs/screenshot.png)
 
 ## Install
 
-1. Connect the Kindle over USB and run `./deploy.sh`.
-2. Eject the Kindle and restart KOReader.
+Connect the Kindle over USB, run `./deploy.sh`, eject, and restart KOReader.
 
 ## Use
 
-1. In KOReader, open the top menu, then **Network (Wi-Fi icon) → Bookdrop → Bookdrop server**.
-2. A popup shows an address like `http://192.168.1.23:8080`. Open it in your computer's browser.
-3. Drag books onto the page to upload them. Hover over a book to download or delete it, or use **Select** to delete several at once. Open a folder to rename or delete it (deleting a folder removes everything inside it).
+1. In KOReader: **Network → Bookdrop → Bookdrop server**.
+2. Open the address it shows (e.g. `http://192.168.1.23:8080`) on your computer.
+3. Drag books onto the page to upload. Hover a book to download or delete it; **Select** deletes several. Open a folder to rename or delete it (deleting removes everything inside).
 
-The server is a manual toggle: it only starts and stops when you tap it. It also goes down if the Kindle sleeps or KOReader exits. While it runs, the Kindle won't fall asleep on its own, so remember to turn it off to save battery. **Show address** in the same menu shows the address again.
+The server runs until you toggle it off, the Kindle sleeps, or KOReader exits. It keeps the Kindle awake, so turn it off when done. There's no password: anyone on your Wi-Fi can use it while it runs.
 
-Covers and titles come from KOReader's cover browser cache. Books it hasn't indexed yet get a plain placeholder cover; the Kindle extracts the real cover in the background and the page updates on its own.
-
-There is no password. Anyone on your Wi-Fi can open the page while the server is running.
+Covers come from KOReader's cover browser cache; unindexed books show a placeholder until the Kindle extracts the cover.
 
 ## Develop
 
 ```
 bookdrop.koplugin/
-  main.lua              KOReader integration: menu, firewall, covers, cleanup on delete
+  main.lua              KOReader integration: menu, firewall, covers, cleanup
   bookdrop_server.lua   non-blocking HTTP server polled by KOReader's UI loop
   bookdrop_api.lua      routes (no KOReader dependencies)
   bookdrop_json.lua     tiny JSON encoder
-  web/index.html        the browser UI
-dev/
-  serve.sh              run the server on this computer against dev/sample-books
+  web/index.html        browser UI
+dev/serve.sh            run the server locally
 ```
 
-Run it locally (needs `luajit`, plus `luarocks --lua-version=5.1 --local install luasocket luafilesystem`):
+Needs `luajit` and `luarocks --lua-version=5.1 --local install luasocket luafilesystem`:
 
 ```
 ./dev/serve.sh dev/sample-books 8099
 ```
 
-Covers and metadata are KOReader-only, so local runs show placeholder covers.
+Local runs show placeholder covers (covers need KOReader).
