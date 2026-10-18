@@ -8,6 +8,8 @@ A KOReader plugin to manage your Kindle's books from a browser over Wi-Fi: brows
 
 Connect the Kindle over USB, run `./deploy.sh`, eject, and restart KOReader.
 
+To update over Wi-Fi instead (no need to quit KOReader): put your public key in `koreader/settings/SSH/authorized_keys` once, start **Network → SSH server** in KOReader, then run `./deploy.sh <kindle-ip>` and restart KOReader. The key defaults to `~/.ssh/kindle_ed25519` (override with `SSH_KEY`).
+
 ## Use
 
 1. In KOReader: **Network → Bookdrop → Bookdrop server**.
