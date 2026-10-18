@@ -22,6 +22,16 @@ local api = Api.new{
             -- df -k reports KiB; the API reports bytes, like KOReader's util.diskUsage()
             return total and { total = total * 1024, used = used * 1024, free = free * 1024 }
         end,
+        -- Move "Book.sdr" along with "Book.epub", like KOReader's default sidecar location
+        moveBook = function(old_abs, new_abs)
+            local ok, err = os.rename(old_abs, new_abs)
+            if not ok then return nil, err end
+            local sdr = function(abs) return abs:gsub("%.[^./]+$", "") .. ".sdr" end
+            if lfs.attributes(sdr(old_abs), "mode") == "directory" then
+                os.rename(sdr(old_abs), sdr(new_abs))
+            end
+            return true
+        end,
         -- KOReader's default sidecar location: "Book.epub" -> "Book.sdr/metadata.epub.lua"
         sidecar = function(abs)
             local stem, ext = abs:match("^(.*)%.([^./]+)$")

@@ -130,7 +130,9 @@ main { padding: 28px 0 120px; }
   background: linear-gradient(90deg, rgba(0,0,0,.18), rgba(255,255,255,.12) 45%, rgba(0,0,0,0));
   pointer-events: none;
 }
-.cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cover img { width: 100%; height: 100%; object-fit: cover; display: block; -webkit-user-drag: none; }
+.book.dragging { opacity: .45; }
+.folder.drop-over { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .placeholder {
   position: absolute; inset: 0; padding: 18px 14px 14px 18px;
   display: flex; flex-direction: column; justify-content: space-between;
@@ -297,6 +299,19 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
 .hl .note { margin: 10px 0 0 17px; font-size: 14px; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 .hl .note::before { content: "Note: "; font-weight: 600; }
 .hl .where { margin: 8px 0 0 17px; color: var(--ink-soft); font-size: 12px; }
+/* Move dialog */
+.move-list { list-style: none; margin: 0 0 20px; padding: 0; max-height: 46vh; overflow: auto; border: 1px solid var(--rule); border-radius: 6px; }
+.move-list button {
+  width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--rule); background: none;
+  padding: 10px 12px; cursor: pointer; overflow-wrap: anywhere;
+}
+.move-list li:last-child button { border-bottom: 0; }
+.move-list button:hover, .move-list button:focus-visible { background: var(--paper); }
+.move-list .parent { color: var(--ink-soft); }
+.move-new { display: flex; gap: 8px; margin-bottom: 20px; }
+.move-new input[type=text] { margin: 0; flex: 1; }
+.conflict-all { display: flex; gap: 8px; align-items: center; margin: -8px 0 20px; font-size: 14px; }
+.conflict-all[hidden] { display: none; }
 .hl-empty { padding: 32px 24px; color: var(--ink-soft); text-align: center; margin: 0; }
 
 .toast {
@@ -398,6 +413,7 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
 <div class="selbar" id="selbar">
   <span id="sel-count">0 selected</span>
   <button class="btn" type="button" id="sel-all">Select all</button>
+  <button class="btn" type="button" id="sel-move">Move to…</button>
   <button class="btn danger solid" type="button" id="sel-delete">Delete</button>
   <button class="btn" type="button" id="sel-done">Done</button>
 </div>
@@ -421,6 +437,29 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
   </div>
 </dialog>
 
+<dialog id="move-dlg">
+  <h3 id="move-dlg-title">Move to…</h3>
+  <ul class="move-list" id="move-list"></ul>
+  <div class="move-new">
+    <input type="text" id="move-new-name" placeholder="New folder" aria-label="New folder name">
+    <button class="btn primary" type="button" id="move-new-ok">Create &amp; move</button>
+  </div>
+  <div class="dlg-actions">
+    <button class="btn" type="button" id="move-cancel">Cancel</button>
+  </div>
+</dialog>
+
+<dialog id="conflict-dlg">
+  <h3 id="conflict-title"></h3>
+  <p id="conflict-text"></p>
+  <label class="conflict-all" id="conflict-all-row"><input type="checkbox" id="conflict-all"> Apply to all remaining conflicts</label>
+  <div class="dlg-actions">
+    <button class="btn" type="button" id="conflict-skip">Skip</button>
+    <button class="btn" type="button" id="conflict-rename">Keep both</button>
+    <button class="btn danger solid" type="button" id="conflict-overwrite">Replace</button>
+  </div>
+</dialog>
+
 <dialog id="book-dlg" class="book-dlg" aria-labelledby="book-dlg-title">
   <header>
     <div id="book-dlg-cover"></div>
@@ -441,6 +480,7 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
   const $ = (id) => document.getElementById(id);
   const ICON = {
     download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+    pencil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg>',
     trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
     close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>',
@@ -483,7 +523,11 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
 
   async function api(method, path) {
     const res = await fetch(path, { method });
-    if (!res.ok) throw new Error((await res.text()) || res.statusText);
+    if (!res.ok) {
+      const err = new Error((await res.text()) || res.statusText);
+      err.status = res.status;
+      throw err;
+    }
     return res.json();
   }
 
@@ -578,7 +622,7 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
         : `<li class="empty"><h2>No books${esc(where)} yet</h2><p>Drag EPUB, PDF or MOBI files anywhere on this page, or use Add books.</p></li>`;
     } else {
       $("grid").innerHTML = books.map((b) => `
-        <li class="book${state.selected.has(b.path) ? " selected" : ""}" data-path="${esc(b.path)}">
+        <li class="book${state.selected.has(b.path) ? " selected" : ""}" data-path="${esc(b.path)}" draggable="true">
           <span class="check" aria-hidden="true">${ICON.check}</span>
           ${coverHTML(b)}
           <div class="meta">
@@ -587,6 +631,7 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
             <div class="size">${esc(b.ext.toUpperCase())}, ${fmtSize(b.size)}</div>
           </div>
           <div class="actions">
+            <button class="icon-btn" type="button" data-rename="${esc(b.path)}" title="Rename" aria-label="Rename ${esc(titleOf(b))}">${ICON.pencil}</button>
             <a class="icon-btn" href="/api/download?path=${enc(b.path)}" title="Download to this computer" aria-label="Download ${esc(titleOf(b))}">${ICON.download}</a>
             <button class="icon-btn del" type="button" data-del="${esc(b.path)}" title="Delete from Kindle" aria-label="Delete ${esc(titleOf(b))}">${ICON.trash}</button>
           </div>
@@ -609,6 +654,7 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
     const n = state.selected.size;
     $("sel-count").textContent = `${n} selected`;
     $("sel-delete").disabled = n === 0;
+    $("sel-move").disabled = n === 0;
     $("select-btn").textContent = state.selecting ? "Done" : "Select";
   }
 
@@ -638,6 +684,108 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
     if (failed) toast(`Deleted ${ok}, ${failed} could not be deleted`, true);
     else toast(ok === 1 ? "Deleted 1 book" : `Deleted ${ok} books`);
   }
+
+  // Moving and renaming. Asks on name clashes; `remembered` carries an "apply to all" answer.
+  function askConflict(name, where, more) {
+    return new Promise((resolve) => {
+      const d = $("conflict-dlg");
+      $("conflict-title").textContent = `“${name}” already exists`;
+      $("conflict-text").textContent = `There is already a book with this name in ${where}/. Replacing it also removes its reading progress and highlights.`;
+      $("conflict-all").checked = false;
+      $("conflict-all-row").hidden = !more;
+      const done = (choice) => { d.close(); resolve({ choice, all: $("conflict-all").checked }); };
+      $("conflict-skip").onclick = () => done("skip");
+      $("conflict-rename").onclick = () => done("rename");
+      $("conflict-overwrite").onclick = () => done("overwrite");
+      d.oncancel = () => resolve({ choice: "skip", all: false });
+      d.showModal();
+      $("conflict-rename").focus();
+    });
+  }
+
+  // Returns the new path, or null when skipped
+  async function moveBook(path, to, remembered, more) {
+    const call = (conflict) => api("POST", `/api/books/move?path=${enc(path)}&to=${enc(to)}&conflict=${conflict}`);
+    try {
+      return (await call(remembered.choice || "ask")).path;
+    } catch (e) {
+      if (e.status !== 409) throw e;
+    }
+    const slash = to.lastIndexOf("/");
+    const ans = await askConflict(to.slice(slash + 1), slash < 0 ? state.root : to.slice(0, slash), more);
+    if (ans.all) remembered.choice = ans.choice;
+    return ans.choice === "skip" ? null : (await call(ans.choice)).path;
+  }
+
+  async function moveBooks(paths, folder) {
+    const remembered = {};
+    let moved = 0, skipped = 0, failed = 0;
+    for (const [i, p] of paths.entries()) {
+      const b = state.books.find((x) => x.path === p);
+      if (!b || b.folder === folder) continue;
+      try {
+        const res = await moveBook(p, folder ? folder + "/" + b.name : b.name, remembered, i < paths.length - 1);
+        if (res) moved++; else skipped++;
+        state.selected.delete(p);
+      } catch (e) { failed++; }
+    }
+    await load();
+    const where = folder ? folder.slice(folder.lastIndexOf("/") + 1) : state.root;
+    const msg = `Moved ${moved} ${moved === 1 ? "book" : "books"} to ${where}` + (skipped ? `, skipped ${skipped}` : "");
+    if (failed) toast(`${msg}, ${failed} could not be moved`, true);
+    else if (moved || skipped) toast(msg);
+    if (state.selecting && !state.selected.size) toggleSelecting(false);
+  }
+
+  function renameBook(path) {
+    const b = state.books.find((x) => x.path === path);
+    if (!b) return;
+    const dot = b.name.lastIndexOf(".");
+    const base = b.name.slice(0, dot), ext = b.name.slice(dot);
+    nameDialog({
+      title: "Rename book", where: `${b.folder || state.root}/${b.name}`, value: base, okLabel: "Rename",
+      onOk: async (name) => {
+        if (name.toLowerCase().endsWith(ext.toLowerCase())) name = name.slice(0, -ext.length);
+        if (name + ext === b.name) return;
+        const res = await moveBook(path, (b.folder ? b.folder + "/" : "") + name + ext, {}, false);
+        if (!res) return;
+        await load();
+        toast(`Renamed to ${res.slice(res.lastIndexOf("/") + 1)}`);
+      },
+    });
+  }
+
+  // Move dialog: pick a folder, or create one at the top level
+  let movePaths = [];
+  function openMoveDialog(paths) {
+    movePaths = paths;
+    $("move-dlg-title").textContent = `Move ${paths.length} ${paths.length === 1 ? "book" : "books"} to…`;
+    $("move-list").innerHTML = ["", ...state.folders].map((f) => {
+      const i = f.lastIndexOf("/");
+      const label = f === "" ? esc(state.root) + "/" : (i < 0 ? "" : `<span class="parent">${esc(f.slice(0, i + 1))}</span>`) + esc(f.slice(i + 1));
+      return `<li><button type="button" data-folder="${esc(f)}">${label}</button></li>`;
+    }).join("");
+    $("move-new-name").value = "";
+    $("move-dlg").showModal();
+  }
+  $("move-list").onclick = (e) => {
+    const btn = e.target.closest("button[data-folder]"); if (!btn) return;
+    $("move-dlg").close();
+    moveBooks(movePaths, btn.dataset.folder);
+  };
+  const moveToNew = async () => {
+    const name = $("move-new-name").value.trim();
+    if (!name) return;
+    if (!state.folders.includes(name)) {
+      try { await api("POST", "/api/folder?path=" + enc(name)); }
+      catch (e) { toast(e.message, true); return; }
+    }
+    $("move-dlg").close();
+    moveBooks(movePaths, name);
+  };
+  $("move-new-ok").onclick = moveToNew;
+  $("move-new-name").onkeydown = (e) => { if (e.key === "Enter") moveToNew(); };
+  $("move-cancel").onclick = () => $("move-dlg").close();
 
   // Uploads: one at a time, the Kindle handles a single stream best
   const queue = [];
@@ -714,6 +862,7 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
   $("select-btn").onclick = () => toggleSelecting(!state.selecting);
   $("sel-done").onclick = () => toggleSelecting(false);
   $("sel-all").onclick = () => { visibleBooks().forEach((b) => state.selected.add(b.path)); render(); };
+  $("sel-move").onclick = () => openMoveDialog([...state.selected]);
   $("sel-delete").onclick = async () => {
     const paths = [...state.selected];
     const ok = await confirmDelete(`Delete ${paths.length} ${paths.length === 1 ? "book" : "books"}?`,
@@ -731,6 +880,7 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
       renderSelbar();
       return;
     }
+    if (e.target.closest("[data-rename]")) { renameBook(path); return; }
     if (e.target.closest("[data-del]")) {
       const b = state.books.find((x) => x.path === path);
       const ok = await confirmDelete(`Delete “${titleOf(b)}”?`,
@@ -858,6 +1008,42 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
     } catch (e) { toast(e.message, true); }
     await load();
   };
+
+  // Drag books onto a folder chip to move them; in Select mode a selected book carries the whole selection
+  const BOOKS_TYPE = "application/x-bookdrop-books";
+  let dragPaths = [];
+  $("grid").addEventListener("dragstart", (e) => {
+    const li = e.target.closest(".book"); if (!li) return;
+    const path = li.dataset.path;
+    dragPaths = state.selecting && state.selected.has(path) ? [...state.selected] : [path];
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData(BOOKS_TYPE, String(dragPaths.length));
+    li.classList.add("dragging");
+  });
+  $("grid").addEventListener("dragend", (e) => {
+    e.target.closest(".book")?.classList.remove("dragging");
+    document.querySelectorAll(".folder.drop-over").forEach((el) => el.classList.remove("drop-over"));
+  });
+  const hasBooks = (e) => [...(e.dataTransfer?.types || [])].includes(BOOKS_TYPE);
+  const dropFolder = (e) => {
+    const btn = hasBooks(e) && e.target.closest(".folder");
+    return btn && btn.dataset.folder !== "*" ? btn : null;
+  };
+  $("folders").addEventListener("dragover", (e) => {
+    const btn = dropFolder(e); if (!btn) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = "move";
+    btn.classList.add("drop-over");
+  });
+  $("folders").addEventListener("dragleave", (e) => {
+    const btn = e.target.closest(".folder");
+    if (btn && !btn.contains(e.relatedTarget)) btn.classList.remove("drop-over");
+  });
+  $("folders").addEventListener("drop", (e) => {
+    const btn = dropFolder(e); if (!btn) return;
+    e.preventDefault();
+    btn.classList.remove("drop-over");
+    moveBooks(dragPaths, btn.dataset.folder);
+  });
 
   // Page-wide drag and drop
   let dragDepth = 0;

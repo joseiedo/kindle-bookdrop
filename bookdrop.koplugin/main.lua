@@ -133,19 +133,35 @@ function hooks.coverFile(abs, mtime)
     return written and cached or nil
 end
 
+local function try(mod, fn)
+    local ok, m = pcall(require, mod)
+    if ok and m then pcall(fn, m) end
+end
+
 function hooks.deleteBook(abs)
     if not os.remove(abs) then return false end
     -- Same cleanup as FileManager:deleteFile()
-    local function try(mod, fn)
-        local ok, m = pcall(require, mod)
-        if ok and m then pcall(fn, m) end
-    end
     try("ui/widget/booklist", function(m) m.resetBookInfoCache(abs) end)
     try("docsettings", function(m) m.updateLocation(abs) end)
     try("readhistory", function(m) m:fileDeleted(abs) end)
     try("readcollection", function(m) m:removeItem(abs) end)
     local bim = getBIM()
     if bim then pcall(bim.deleteBookInfo, bim, abs) end
+    return true
+end
+
+function hooks.moveBook(old_abs, new_abs)
+    local ok, err = os.rename(old_abs, new_abs)
+    if not ok then return nil, err end
+    -- Same bookkeeping as FileManager:renameFile() for files: the sidecar (highlights,
+    -- progress) follows the book, and history/collections point at the new path
+    try("ui/widget/booklist", function(m) m.resetBookInfoCache(old_abs) end)
+    try("docsettings", function(m) m.updateLocation(old_abs, new_abs) end)
+    try("readhistory", function(m) m:updateItem(old_abs, new_abs) end)
+    try("readcollection", function(m) m:updateItem(old_abs, new_abs) end)
+    -- Cover cache is keyed by path; the new path gets extracted again
+    local bim = getBIM()
+    if bim then pcall(bim.deleteBookInfo, bim, old_abs) end
     return true
 end
 

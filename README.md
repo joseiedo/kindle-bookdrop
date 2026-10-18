@@ -1,6 +1,6 @@
 # Bookdrop
 
-A KOReader plugin to manage your Kindle's books from a browser over Wi-Fi: browse with covers, read highlights, upload, download, delete, and create, rename or delete folders. No USB cable.
+A KOReader plugin to manage your Kindle's books from a browser over Wi-Fi: browse with covers, read highlights, upload, download, move, rename and delete books, and create, rename or delete folders. No USB cable.
 
 ![Bookdrop web UI](docs/screenshot.png)
 
@@ -14,7 +14,7 @@ To update over Wi-Fi instead (no need to quit KOReader): put your public key in 
 
 1. In KOReader: **Network → Bookdrop → Bookdrop server**.
 2. Open the address it shows (e.g. `http://192.168.1.23:8080`) on your computer.
-3. Drag books onto the page to upload. Click a book to read its highlights and notes. Hover a book to download or delete it; **Select** deletes several. Open a folder to rename or delete it (deleting removes everything inside).
+3. Drag books onto the page to upload. Click a book to read its highlights and notes. Hover a book to rename, download or delete it. Drag books onto a folder to move them, or use **Select** to move or delete several at once (**Move to…** can create the folder). Highlights and reading progress move with the book; on a name clash you choose to replace, keep both, or skip. Open a folder to rename or delete it (deleting removes everything inside).
 
 The server runs until you toggle it off, the Kindle sleeps, or KOReader exits. It keeps the Kindle awake, so turn it off when done. There's no password: anyone on your Wi-Fi can use it while it runs.
 

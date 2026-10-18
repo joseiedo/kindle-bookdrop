@@ -1,5 +1,5 @@
 --[[--
-HTTP routes for Bookdrop: list, upload, download, delete books and manage
+HTTP routes for Bookdrop: list, upload, download, move, rename, delete books and manage
 folders under a root folder.
 
 Kept free of KOReader UI dependencies so it can run on a desktop for testing;
@@ -55,7 +55,7 @@ local Api = {}
 Api.__index = Api
 
 --- opts: root, lfs, web_dir, hooks = { bookInfo(abs), coverFile(abs, mtime), queueCovers(list),
----       deleteBook(abs), folderRenamed(old_abs, new_abs), changed(),
+---       deleteBook(abs), moveBook(old_abs, new_abs), folderRenamed(old_abs, new_abs), changed(),
 ---       diskUsage(root) -> { total, used, free } in bytes, sidecar(abs) -> settings table }
 function Api.new(opts)
     local self = setmetatable(opts, Api)
@@ -188,6 +188,17 @@ function Api:highlights(abs)
     return list
 end
 
+--- "Book.epub" -> "Book (2).epub", "Book (3).epub"... until the name is free in folder_abs
+function Api:freeName(folder_abs, name)
+    local stem, ext = name:match("^(.*)%.([^.]+)$")
+    local final_name, n = name, 1
+    while self:mode(folder_abs .. "/" .. final_name) do
+        n = n + 1
+        final_name = string.format("%s (%d).%s", stem, n, ext)
+    end
+    return final_name
+end
+
 function Api:storage()
     local usage = self.hooks.diskUsage and self.hooks.diskUsage(self.root)
     return usage or json.null
@@ -210,13 +221,7 @@ function Api:openBody(req)
         return nil, text(415, "Not an ebook file: " .. name)
     end
 
-    -- Never overwrite: "Book.epub" -> "Book (2).epub"
-    local stem, ext = name:match("^(.*)%.([^.]+)$")
-    local final_name, n = name, 1
-    while self:mode(folder_abs .. "/" .. final_name) do
-        n = n + 1
-        final_name = string.format("%s (%d).%s", stem, n, ext)
-    end
+    local final_name = self:freeName(folder_abs, name)
     local final_abs = folder_abs .. "/" .. final_name
     local tmp_abs = folder_abs .. "/." .. final_name .. ".bookdrop-part"
     local fh, err = io.open(tmp_abs, "wb")
@@ -312,6 +317,46 @@ function Api:handle(req)
         if not ok then return text(500, "Could not delete") end
         if self.hooks.changed then self.hooks.changed() end
         return jsonResponse(200, { deleted = rel })
+    end
+
+    -- Move and/or rename a book. conflict: "ask" (409 if taken), "overwrite" or "rename" (keep both)
+    if m == "POST" and p == "/api/books/move" then
+        local abs, rel = self:abs(q.path)
+        if not abs or rel == "" or self:mode(abs) ~= "file" then return text(404, "Not found") end
+        local new_abs, new_rel = self:abs(q.to)
+        local name = new_rel and new_rel:match("[^/]+$")
+        if not new_abs or new_rel == "" or not validName(name) then return text(400, "Invalid file name") end
+        if not BOOK_EXTS[extOf(name) or ""] then return text(415, "Not an ebook file: " .. name) end
+        local folder_abs = new_abs:match("^(.*)/[^/]+$")
+        if self:mode(folder_abs) ~= "directory" then return text(404, "Folder not found") end
+        if new_rel == rel then return jsonResponse(200, { path = rel, name = name }) end
+        -- Case-only renames are fine on case-insensitive disks: target "exists" but is the same file
+        if self:mode(new_abs) and new_rel:lower() ~= rel:lower() then
+            if q.conflict == "rename" then
+                name = self:freeName(folder_abs, name)
+                new_abs = folder_abs .. "/" .. name
+                new_rel = new_abs:sub(#self.root + 2)
+            elseif q.conflict == "overwrite" and self:mode(new_abs) == "file" then
+                local removed
+                if self.hooks.deleteBook then
+                    removed = self.hooks.deleteBook(new_abs)
+                else
+                    removed = os.remove(new_abs)
+                end
+                if not removed then return text(500, "Could not replace " .. name) end
+            else
+                return text(409, "Already exists")
+            end
+        end
+        local ok, err
+        if self.hooks.moveBook then
+            ok, err = self.hooks.moveBook(abs, new_abs)
+        else
+            ok, err = os.rename(abs, new_abs)
+        end
+        if self.hooks.changed then self.hooks.changed() end
+        if not ok then return text(500, "Could not move book: " .. tostring(err)) end
+        return jsonResponse(200, { path = new_rel, name = name })
     end
 
     if m == "POST" and p == "/api/folder" then
