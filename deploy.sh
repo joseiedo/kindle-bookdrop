@@ -12,7 +12,7 @@ if [ -n "$1" ]; then
     DEST=/mnt/us/koreader/plugins/bookdrop.koplugin
     # The Kindle has no rsync; stream a tarball and swap the folder in place
     COPYFILE_DISABLE=1 tar -C bookdrop.koplugin --exclude '.DS_Store' --exclude '._*' -cf - . |
-        ssh -p "$PORT" -o ConnectTimeout=10 ${KEY:+-i "$KEY"} "root@$HOST" \
+        ssh -p "$PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new ${KEY:+-i "$KEY"} "root@$HOST" \
             "rm -rf $DEST.new && mkdir -p $DEST.new && tar -xf - -C $DEST.new && rm -rf $DEST && mv $DEST.new $DEST"
     echo "Installed to $HOST:$DEST. Restart KOReader to load it (Exit → Restart KOReader)."
     exit 0
