@@ -39,3 +39,7 @@ Needs `luajit` and `luarocks --lua-version=5.1 --local install luasocket luafile
 ```
 
 Local runs show placeholder covers (covers need KOReader).
+
+## License
+
+[AGPL-3.0](LICENSE), same as KOReader. Not affiliated with or endorsed by Amazon; Kindle is a trademark of Amazon.com, Inc.
