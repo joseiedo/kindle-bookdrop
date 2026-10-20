@@ -307,20 +307,79 @@ function Bookdrop:url()
     return ip and string.format("http://%s:%d", ip, port)
 end
 
--- Kindle's own power daemon puts the device to sleep (and drops Wi-Fi)
--- after a few idle minutes (600s by default); keep resetting its idle timer while
--- serving. Unlike preventScreenSaver, this still lets the power button sleep the
--- Kindle (which stops the server via onSuspend).
+-- Kindle's power button, read straight from its input device: KOReader only hears about
+-- it through powerd, which stays silent while preventScreenSaver is set.
+local KEY_POWER = 116
+local power = nil -- { fd, poll } while watching
+
+local function powerButtonDevice()
+    local f = io.open("/proc/bus/input/devices")
+    if not f then return nil end
+    local name, path
+    for line in f:lines() do
+        name = line:match('^N: Name="(.*)"') or name
+        local event = name and name:find("pwrkey") and line:match("^H: Handlers=.*(event%d+)")
+        if event then
+            path = "/dev/input/" .. event
+            break
+        end
+    end
+    f:close()
+    return path
+end
+
+local function watchPowerButton(on_press)
+    local path = powerButtonDevice()
+    if not path then return false end
+    local ffi = require("ffi")
+    require("ffi/posix_h")
+    require("ffi/linux_input_h")
+    local C = ffi.C
+    local fd = C.open(path, bit.bor(C.O_RDONLY, C.O_NONBLOCK, C.O_CLOEXEC))
+    if fd < 0 then return false end
+    local ev = ffi.new("struct input_event")
+    local size = ffi.sizeof(ev)
+    power = { fd = fd }
+    function power.poll()
+        while C.read(fd, ev, size) == size do
+            if ev.type == C.EV_KEY and ev.code == KEY_POWER and ev.value == 1 then
+                UIManager:nextTick(on_press)
+            end
+        end
+        UIManager:scheduleIn(0.2, power.poll)
+    end
+    power.poll()
+    return true
+end
+
+local function unwatchPowerButton()
+    if not power then return end
+    UIManager:unschedule(power.poll)
+    require("ffi").C.close(power.fd)
+    power = nil
+end
+
+-- Fallback when the power button can't be watched: reset powerd's idle timer
+-- (600s by default) instead, which keeps the button working as usual.
 local function touchPowerd()
     os.execute("lipc-set-prop com.lab126.powerd touchScreenSaverTimeout 1")
     UIManager:scheduleIn(60, touchPowerd)
 end
 
-local function keepAwake(on)
+-- Kindle's own power daemon puts the device to sleep (and drops Wi-Fi) after a few
+-- idle minutes; hold it off while serving. That also swallows the power button, so
+-- watch it ourselves and call on_power_press.
+local function keepAwake(on, on_power_press)
     UIManager[on and "preventStandby" or "allowStandby"](UIManager)
-    if Device:isKindle() then
-        UIManager:unschedule(touchPowerd)
-        if on then touchPowerd() end
+    if not Device:isKindle() then return end
+    UIManager:unschedule(touchPowerd)
+    unwatchPowerButton()
+    os.execute("lipc-set-prop com.lab126.powerd preventScreenSaver 0")
+    if not on then return end
+    if watchPowerButton(on_power_press) then
+        os.execute("lipc-set-prop com.lab126.powerd preventScreenSaver 1")
+    else
+        touchPowerd()
     end
 end
 
@@ -355,7 +414,7 @@ function Bookdrop:start()
     end
     firewall("A", self.port)
     UIManager:insertZMQ(server)
-    keepAwake(true)
+    keepAwake(true, function() self:onPowerButton() end)
     running = { server = server, port = self.port }
     logger.info("Bookdrop: serving", self.root, "on port", self.port)
     self:showAddress()
@@ -382,9 +441,41 @@ function Bookdrop:showAddress()
     UIManager:show(InfoMessage:new{ text = text })
 end
 
+local power_dialog
+
+local function sleepNow()
+    os.execute("lipc-set-prop com.lab126.powerd powerButton 1")
+end
+
+-- Power button pressed while serving: ask before stopping and sleeping.
+-- A second press while asking confirms.
+function Bookdrop:onPowerButton()
+    local function stopAndSleep()
+        power_dialog = nil
+        self:stop()
+        -- Let the dialog close on screen before the screensaver takes over
+        UIManager:scheduleIn(0.5, sleepNow)
+    end
+    if power_dialog and UIManager:isWidgetShown(power_dialog) then
+        UIManager:close(power_dialog)
+        return stopAndSleep()
+    end
+    local ConfirmBox = require("ui/widget/confirmbox")
+    power_dialog = ConfirmBox:new{
+        text = _("Bookdrop is still running.\n\nStop it and put the Kindle to sleep?\n\n(Press the power button again to confirm.)"),
+        ok_text = _("Sleep"),
+        ok_callback = stopAndSleep,
+        cancel_callback = function() power_dialog = nil end,
+    }
+    UIManager:show(power_dialog)
+end
+
 -- The server can't outlive a suspend (Wi-Fi goes down) or KOReader itself.
 function Bookdrop:onSuspend() self:stop() end
 function Bookdrop:onExit() self:stop() end
+function Bookdrop:onRestart() self:stop() end
+function Bookdrop:onPowerOff() self:stop() end
+function Bookdrop:onReboot() self:stop() end
 
 function Bookdrop:addToMainMenu(menu_items)
     menu_items.bookdrop = {

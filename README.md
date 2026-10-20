@@ -18,7 +18,7 @@ To update over Wi-Fi instead (no need to quit KOReader): put your public key in 
 4. **Fonts**: drop TTF/OTF files; they go to `/mnt/us/fonts`. Restart KOReader and pick them in **Aa → Font**. The same page sets the default font and margins for books you haven't opened yet, and can apply them to the book open now.
 5. **Screensaver**: drop photos and crop each one to the Kindle's screen; they go to the screensaver folder (the one KOReader already uses, or `/mnt/us/screensaver`). **Use as screensaver** sets KOReader to show a random one when the Kindle sleeps.
 
-The server runs until you toggle it off, the Kindle sleeps, or KOReader exits. It keeps the Kindle from sleeping on its own, so turn it off when done; the power button still puts it to sleep (and stops the server). There's no password: anyone on your Wi-Fi can use it while it runs.
+The server runs until you toggle it off, the Kindle sleeps, or KOReader exits. It keeps the Kindle from sleeping on its own, so turn it off when done. Pressing the power button while it runs asks whether to stop it and sleep (press again to confirm). There's no password: anyone on your Wi-Fi can use it while it runs.
 
 Covers come from KOReader's cover browser cache; unindexed books show a placeholder until the Kindle extracts the cover.
 
