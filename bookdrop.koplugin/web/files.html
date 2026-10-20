@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookdrop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/base.css">
+<style>
+main { padding: 8px 0 120px; }
+.note {
+  background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 14px 18px; margin: 0 0 24px; color: var(--ink-soft);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; justify-content: space-between;
+}
+.note strong { color: var(--ink); font-weight: 600; }
+.note.ok strong { color: var(--ok); }
+.defaults {
+  background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 18px 20px; margin: 0 0 28px;
+}
+.defaults h2 { font: 600 20px/1.3 var(--serif); margin: 0 0 4px; }
+.defaults .hint { color: var(--ink-soft); margin: 0 0 16px; font-size: 14px; }
+.fields { display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: flex-end; }
+.fields label { display: grid; gap: 4px; font-size: 13px; color: var(--ink-soft); }
+.fields select, .fields input[type=number] {
+  border: 1px solid var(--rule); background: var(--paper); border-radius: 6px; padding: 7px 10px; color: var(--ink);
+}
+.fields select { min-width: 220px; max-width: 100%; }
+.fields input[type=number] { width: 80px; }
+.apply { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; }
+.defaults .actions { margin-top: 16px; }
+.progress { color: var(--ink-soft); font-size: 14px; margin: 0 0 12px; }
+.progress:empty { display: none; }
+
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.list.fonts li {
+  display: flex; align-items: center; gap: 16px; padding: 16px 18px;
+  background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px;
+}
+.sample { flex: 1 1 auto; min-width: 0; }
+.sample .text { font-size: 26px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sample .meta { color: var(--ink-soft); font-size: 13px; margin-top: 4px; overflow-wrap: anywhere; }
+
+.list.photos { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px; }
+.list.photos li { position: relative; }
+.list.photos img {
+  display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 6px;
+  background: var(--rule); box-shadow: var(--shadow); filter: grayscale(1);
+}
+.list.photos .meta { color: var(--ink-soft); font-size: 13px; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list.photos .btn { position: absolute; top: 8px; right: 8px; opacity: 0; transition: opacity .15s; padding: 6px 10px; }
+.list.photos li:hover .btn, .list.photos .btn:focus-visible { opacity: 1; }
+@media (hover: none) { .list.photos .btn { opacity: 1; } }
+
+.empty { text-align: center; color: var(--ink-soft); padding: 64px 16px; border: 1px dashed var(--rule); border-radius: 10px; }
+.empty h2 { font: 600 22px/1.3 var(--serif); color: var(--ink); margin: 0 0 8px; }
+.empty p { margin: 0 auto; max-width: 46ch; }
+</style>
+</head>
+<body>
+<div class="offline" id="offline">Can't reach the Kindle. Check that Bookdrop is still running and both devices are on the same Wi-Fi.</div>
+
+<header class="top">
+  <div class="wrap top-row">
+    <div>
+      <a class="back" href="/">← Bookdrop</a>
+      <h1 id="title"></h1>
+      <p class="subtitle" id="subtitle">Loading…</p>
+    </div>
+    <div>
+      <button class="btn primary" id="add-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        <span id="add-label"></span>
+      </button>
+      <input type="file" id="file-input" multiple hidden>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="note" id="note" hidden></div>
+  <form class="defaults" id="defaults" hidden>
+    <h2>Default font and margins</h2>
+    <p class="hint">Used by books you haven't opened yet. Margins are in KOReader's units (the bottom menu shows the same numbers).</p>
+    <div class="fields">
+      <label>Font <select id="d-font"></select></label>
+      <label>Left <input type="number" id="d-left" min="0" max="200" step="1" required></label>
+      <label>Right <input type="number" id="d-right" min="0" max="200" step="1" required></label>
+      <label>Top <input type="number" id="d-top" min="0" max="200" step="1" required></label>
+      <label>Bottom <input type="number" id="d-bottom" min="0" max="200" step="1" required></label>
+    </div>
+    <label class="apply" id="d-apply-row" hidden><input type="checkbox" id="d-apply" checked> <span id="d-apply-label"></span></label>
+    <div class="actions"><button class="btn primary" type="submit">Save</button></div>
+  </form>
+  <p class="progress" id="progress"></p>
+  <ul class="list" id="list"></ul>
+</main>
+
+<div class="drop" id="drop"><strong id="drop-label"></strong></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const enc = encodeURIComponent;
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmtSize = (n) => {
+    const u = ["B", "KB", "MB", "GB"]; let i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return (i ? n.toFixed(n < 10 ? 1 : 0) : n) + " " + u[i];
+  };
+
+  const KINDS = {
+    fonts: {
+      title: "Fonts", add: "Add fonts", drop: "Drop fonts to add them",
+      exts: [".ttf", ".otf", ".ttc"],
+      empty: "<h2>No fonts yet</h2><p>Drag TTF or OTF files here. For a family, add every style (Regular, Italic, Bold, Bold Italic).</p>",
+      note: () => "<span><strong>Restart KOReader</strong> after adding fonts so they show up here and in <strong>Aa → Font</strong>.</span>",
+    },
+    photos: {
+      title: "Screensaver", add: "Add photos", drop: "Drop photos to add them",
+      exts: [".jpg", ".jpeg", ".png", ".gif", ".webp"],
+      empty: "<h2>No photos yet</h2><p>Drag photos here. The Kindle shows a random one each time it goes to sleep.</p>",
+      note: (s) => {
+        if (!s) return "";
+        if (!s.supported) return "<span>KOReader can't show its own screensaver on this Kindle (ads or system screensaver in control).</span>";
+        if (s.active) return "<span><strong>✓ In use.</strong> The Kindle shows a random photo from here when it sleeps.</span>";
+        return '<span>The screensaver isn\'t showing these photos yet.</span><button class="btn primary" type="button" id="use-btn">Use as screensaver</button>';
+      },
+    },
+  };
+  const kind = location.pathname.replace(/^\//, "");
+  const K = KINDS[kind];
+  document.title = K.title + " · Bookdrop";
+  $("title").textContent = K.title;
+  $("add-label").textContent = K.add;
+  $("drop-label").textContent = K.drop;
+  $("file-input").accept = K.exts.join(",");
+  $("list").classList.add(kind);
+
+  let toastTimer;
+  function toast(msg, isErr) {
+    const t = $("toast");
+    t.textContent = msg; t.className = "toast on" + (isErr ? " err" : "");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = "toast", 3200);
+  }
+
+  async function api(method, path) {
+    const res = await fetch(path, { method });
+    if (!res.ok) throw new Error((await res.text()) || res.statusText);
+    return res.json();
+  }
+
+  const raw = (name) => `/api/files/raw?kind=${kind}&name=${enc(name)}`;
+  // Each font previews itself; families are registered once and reused across reloads
+  const loadedFonts = new Map();
+  function fontFamily(f) {
+    const key = f.name + ":" + f.mtime;
+    if (!loadedFonts.has(key)) {
+      const family = "preview-" + loadedFonts.size;
+      const face = new FontFace(family, `url("${raw(f.name)}&v=${f.mtime}")`);
+      face.load().then((ff) => document.fonts.add(ff)).catch(() => {});
+      loadedFonts.set(key, family);
+    }
+    return loadedFonts.get(key);
+  }
+
+  function render(data) {
+    const files = data.files;
+    $("subtitle").textContent = files.length
+      ? `${files.length} ${files.length === 1 ? "file" : "files"} in ${data.dir}`
+      : data.dir;
+    const note = K.note(data.screensaver);
+    $("note").hidden = !note;
+    $("note").className = "note" + (data.screensaver && data.screensaver.active ? " ok" : "");
+    $("note").innerHTML = note;
+    const useBtn = $("use-btn");
+    if (useBtn) useBtn.onclick = async () => {
+      try { await api("POST", "/api/screensaver"); toast("Screensaver set to these photos"); load(); }
+      catch (e) { toast(e.message, true); }
+    };
+
+    const list = $("list");
+    if (!files.length) { list.innerHTML = `<li class="empty">${K.empty}</li>`; return; }
+    list.innerHTML = files.map((f) => kind === "fonts"
+      ? `<li><div class="sample"><div class="text" style="font-family:'${fontFamily(f)}',var(--serif)">The quick brown fox jumps over the lazy dog</div>
+           <div class="meta">${esc(f.name)} · ${fmtSize(f.size)}</div></div>
+           <button class="btn danger" type="button" data-del="${esc(f.name)}">Delete</button></li>`
+      : `<li><img loading="lazy" alt="" src="${raw(f.name)}&v=${f.mtime}">
+           <div class="meta" title="${esc(f.name)}">${esc(f.name)}</div>
+           <button class="btn danger" type="button" data-del="${esc(f.name)}">Delete</button></li>`
+    ).join("");
+  }
+
+  async function load() {
+    try {
+      const data = await api("GET", `/api/files?kind=${kind}`);
+      $("offline").classList.remove("on");
+      render(data);
+    } catch (e) {
+      $("offline").classList.add("on");
+      $("subtitle").textContent = "Not connected";
+    }
+  }
+
+  $("list").addEventListener("click", async (e) => {
+    const name = e.target.closest("[data-del]")?.dataset.del;
+    if (!name || !confirm(`Delete ${name} from the Kindle?`)) return;
+    try { await api("DELETE", `/api/files?kind=${kind}&name=${enc(name)}`); toast(`Deleted ${name}`); }
+    catch (err) { toast(err.message, true); }
+    load();
+  });
+
+  function put(file) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", `/api/files/upload?kind=${kind}&name=${enc(file.name)}`);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) $("progress").textContent = `Sending ${file.name}… ${Math.round((e.loaded / e.total) * 100)}%`;
+      };
+      xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error(xhr.responseText || xhr.statusText));
+      xhr.onerror = () => reject(new Error("Connection lost"));
+      xhr.send(file);
+    });
+  }
+
+  let uploading = false;
+  async function upload(fileList) {
+    const files = [...fileList].filter((f) => K.exts.some((x) => f.name.toLowerCase().endsWith(x)));
+    const skipped = fileList.length - files.length;
+    if (skipped) toast(`Skipped ${skipped} unsupported ${skipped === 1 ? "file" : "files"}`, true);
+    if (!files.length || uploading) return;
+    uploading = true;
+    let failed = 0;
+    for (const f of files) {
+      try { await put(f); } catch (e) { failed++; toast(`${f.name}: ${e.message}`, true); }
+    }
+    uploading = false;
+    $("progress").textContent = "";
+    if (!failed) toast(`Added ${files.length} ${files.length === 1 ? "file" : "files"}`);
+    load();
+  }
+
+  $("add-btn").onclick = () => $("file-input").click();
+  $("file-input").onchange = (e) => { upload(e.target.files); e.target.value = ""; };
+
+  let dragDepth = 0;
+  const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+  addEventListener("dragenter", (e) => { if (hasFiles(e)) { dragDepth++; $("drop").classList.add("on"); } });
+  addEventListener("dragleave", (e) => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; $("drop").classList.remove("on"); } });
+  addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+  addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragDepth = 0; $("drop").classList.remove("on");
+    upload(e.dataTransfer.files);
+  });
+
+  const SIDES = ["left", "right", "top", "bottom"];
+  function renderDefaults(r) {
+    $("defaults").hidden = false;
+    const fonts = r.fonts.includes(r.font) ? r.fonts : [r.font, ...r.fonts];
+    $("d-font").innerHTML = fonts.map((f) => `<option${f === r.font ? " selected" : ""}>${esc(f)}</option>`).join("");
+    for (const side of SIDES) $("d-" + side).value = r.margins[side];
+    $("d-apply-row").hidden = !r.book;
+    if (r.book) $("d-apply-label").textContent = `Also apply to the book open now (${r.book})`;
+  }
+
+  async function loadDefaults() {
+    try { renderDefaults(await api("GET", "/api/reading")); } catch (e) {}
+  }
+
+  $("defaults").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const q = new URLSearchParams({ font: $("d-font").value });
+    for (const side of SIDES) q.set(side, $("d-" + side).value);
+    if (!$("d-apply-row").hidden && $("d-apply").checked) q.set("apply", "1");
+    try {
+      renderDefaults(await api("POST", "/api/reading?" + q));
+      toast(q.get("apply") ? "Saved and applied to the open book" : "Saved as default");
+    } catch (err) { toast(err.message, true); }
+  });
+
+  load();
+  if (kind === "fonts") loadDefaults();
+})();
+</script>
+</body>
+</html>

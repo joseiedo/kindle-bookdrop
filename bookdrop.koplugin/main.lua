@@ -8,6 +8,7 @@ it also goes down when the device suspends or KOReader exits.
 
 local DataStorage = require("datastorage")
 local Device = require("device")
+local Event = require("ui/event")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
@@ -23,6 +24,9 @@ local Api = require("bookdrop_api")
 local Server = require("bookdrop_server")
 
 local DEFAULT_ROOT = Device:isKindle() and "/mnt/us/books" or DataStorage:getDataDir() .. "/books"
+-- KOReader on Kindle also loads fonts from /mnt/us/fonts; elsewhere from its own fonts folder
+local FONT_DIR = Device:isKindle() and "/mnt/us/fonts" or DataStorage:getDataDir() .. "/fonts"
+local DEFAULT_PHOTO_DIR = Device:isKindle() and "/mnt/us/screensaver" or DataStorage:getDataDir() .. "/screensaver"
 local COVER_CACHE = "/tmp/bookdrop-covers"
 local COVER_SPECS = { max_cover_w = 360, max_cover_h = 540 }
 
@@ -200,6 +204,87 @@ function hooks.diskUsage(root)
     end
 end
 
+function hooks.screensaver(dir)
+    local supported = true
+    if Device.supportsScreensaver then supported = Device:supportsScreensaver() and true or false end
+    return {
+        supported = supported,
+        active = G_reader_settings:readSetting("screensaver_type") == "random_image"
+            and G_reader_settings:readSetting("screensaver_dir") == dir,
+    }
+end
+
+function hooks.useScreensaver(dir)
+    G_reader_settings:saveSetting("screensaver_type", "random_image")
+    G_reader_settings:saveSetting("screensaver_dir", dir)
+    G_reader_settings:flush()
+end
+
+-- The book open in the reader, if it's a reflowable one (fonts and margins only apply to those)
+local function openBook()
+    local ok, ReaderUI = pcall(require, "apps/reader/readerui")
+    local ui = ok and ReaderUI.instance
+    if ui and ui.document and ui.rolling and ui.font and ui.typeset then return ui end
+end
+
+-- Same settings KOReader writes for "Set as default": cre_font, and copt_* from the bottom menu
+function hooks.reading()
+    local CreDocument = require("document/credocument")
+    local ok, cre = pcall(CreDocument.engineInit, CreDocument)
+    local fonts = ok and cre.getFontFaces() or {}
+    table.sort(fonts)
+    local h = G_reader_settings:readSetting("copt_h_page_margins")
+        or G_defaults:readSetting("DCREREADER_CONFIG_H_MARGIN_SIZES_MEDIUM")
+    local ui = openBook()
+    return {
+        fonts = fonts,
+        font = G_reader_settings:readSetting("cre_font") or CreDocument.default_font,
+        margins = {
+            left = h[1], right = h[2],
+            top = G_reader_settings:readSetting("copt_t_page_margin")
+                or G_defaults:readSetting("DCREREADER_CONFIG_T_MARGIN_SIZES_LARGE"),
+            bottom = G_reader_settings:readSetting("copt_b_page_margin")
+                or G_defaults:readSetting("DCREREADER_CONFIG_B_MARGIN_SIZES_LARGE"),
+        },
+        book = ui and ui.document.file:match("([^/]+)$") or nil,
+    }
+end
+
+function hooks.setReading(s)
+    local m = s.margins
+    local unsynced = m.top ~= m.bottom
+    if s.font then G_reader_settings:saveSetting("cre_font", s.font) end
+    G_reader_settings:saveSetting("copt_h_page_margins", { m.left, m.right })
+    G_reader_settings:saveSetting("copt_t_page_margin", m.top)
+    G_reader_settings:saveSetting("copt_b_page_margin", m.bottom)
+    if unsynced then G_reader_settings:saveSetting("copt_sync_t_b_page_margins", 0) end
+    G_reader_settings:flush()
+
+    local ui = s.apply_open and openBook()
+    if ui then
+        if s.font then ui:handleEvent(Event:new("SetFont", s.font)) end
+        -- Update the book's own config too, so the margins are saved with it on close
+        local c = ui.typeset.configurable
+        c.h_page_margins = { m.left, m.right }
+        c.t_page_margin, c.b_page_margin = m.top, m.bottom
+        if unsynced then
+            c.sync_t_b_page_margins = 0
+            ui.typeset.sync_t_b_page_margins = false
+        end
+        ui.typeset.unscaled_margins = { m.left, m.top, m.right, m.bottom }
+        ui:handleEvent(Event:new("SetPageMargins", ui.typeset.unscaled_margins))
+        UIManager:setDirty(ui, "full")
+    end
+    return hooks.reading()
+end
+
+-- Photos go where the screensaver already looks, if it's set to a folder
+local function photoDir()
+    local dir = G_reader_settings:readSetting("screensaver_dir")
+    if dir and lfs.attributes(dir, "mode") == "directory" then return dir end
+    return DEFAULT_PHOTO_DIR
+end
+
 function Bookdrop:init()
     self.port = tonumber(G_reader_settings:readSetting("bookdrop_port")) or 8080
     self.root = G_reader_settings:readSetting("bookdrop_root") or DEFAULT_ROOT
@@ -236,7 +321,10 @@ function Bookdrop:start()
     if lfs.attributes(self.root, "mode") ~= "directory" then
         util.makePath(self.root)
     end
-    local api = Api.new{ root = self.root, lfs = lfs, web_dir = plugin_dir .. "/web", hooks = hooks }
+    local api = Api.new{
+        root = self.root, lfs = lfs, web_dir = plugin_dir .. "/web", hooks = hooks,
+        dirs = { fonts = FONT_DIR, photos = photoDir() },
+    }
     local server = Server.new{
         port = self.port,
         handler = function(req) return api:handle(req) end,

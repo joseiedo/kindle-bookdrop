@@ -60,6 +60,8 @@ h1 {
   margin: 0;
 }
 .subtitle { color: var(--ink-soft); margin: 10px 0 0; font-size: 15px; }
+.back { display: inline-block; color: var(--ink-soft); text-decoration: none; font-weight: 500; margin-bottom: 12px; }
+.back:hover { color: var(--ink); }
 .top-actions { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .storage { min-width: 200px; font-size: 13px; color: var(--ink-soft); }
 .storage .bar { height: 4px; background: var(--rule); border-radius: 2px; overflow: hidden; margin-top: 6px; }
@@ -342,6 +344,7 @@ dialog.book-dlg[open] { display: flex; flex-direction: column; }
 <header class="top">
   <div class="wrap top-row">
     <div>
+      <a class="back" href="/">← Bookdrop</a>
       <h1>Kindle library</h1>
       <p class="subtitle" id="subtitle">Loading your books…</p>
     </div>

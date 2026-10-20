@@ -1,6 +1,6 @@
 # Bookdrop
 
-A KOReader plugin to manage your Kindle's books from a browser over Wi-Fi: browse with covers, read highlights, upload, download, move, rename and delete books, and create, rename or delete folders. No USB cable.
+A KOReader plugin to manage your Kindle from a browser over Wi-Fi: browse books with covers, read highlights, upload, download, move, rename and delete books, create, rename or delete folders, add reading fonts, set the default font and margins, and add screensaver photos. No USB cable.
 
 ![Bookdrop web UI](docs/screenshot.png)
 
@@ -15,6 +15,8 @@ To update over Wi-Fi instead (no need to quit KOReader): put your public key in 
 1. In KOReader: **Network → Bookdrop → Bookdrop server**.
 2. Open the address it shows (e.g. `http://192.168.1.23:8080`) on your computer.
 3. Drag books onto the page to upload. Click a book to read its highlights and notes. Hover a book to rename, download or delete it. Drag books onto a folder to move them, or use **Select** to move or delete several at once (**Move to…** can create the folder). Highlights and reading progress move with the book; on a name clash you choose to replace, keep both, or skip. Open a folder to rename or delete it (deleting removes everything inside).
+4. **Fonts**: drop TTF/OTF files; they go to `/mnt/us/fonts`. Restart KOReader and pick them in **Aa → Font**. The same page sets the default font and margins for books you haven't opened yet, and can apply them to the book open now.
+5. **Screensaver**: drop photos; they go to the screensaver folder (the one KOReader already uses, or `/mnt/us/screensaver`). **Use as screensaver** sets KOReader to show a random one when the Kindle sleeps.
 
 The server runs until you toggle it off, the Kindle sleeps, or KOReader exits. It keeps the Kindle awake, so turn it off when done. There's no password: anyone on your Wi-Fi can use it while it runs.
 
@@ -28,7 +30,10 @@ bookdrop.koplugin/
   bookdrop_server.lua   non-blocking HTTP server polled by KOReader's UI loop
   bookdrop_api.lua      routes (no KOReader dependencies)
   bookdrop_json.lua     tiny JSON encoder
-  web/index.html        browser UI
+  web/home.html         browser UI: start menu
+  web/index.html        browser UI: books
+  web/files.html        browser UI: fonts and screensaver photos
+  web/base.css          styles shared by home.html and files.html
 dev/serve.sh            run the server locally
 ```
 

@@ -11,9 +11,23 @@ local Server = require("bookdrop_server")
 local plugin_dir = (arg[0]:match("^(.*)/dev/[^/]*$") or ".") .. "/bookdrop.koplugin"
 lfs.mkdir(root)
 
+local screensaver_dir
+local reading = {
+    fonts = { "EB Garamond", "Literata", "Noto Serif" }, font = "Noto Serif",
+    margins = { left = 10, right = 10, top = 15, bottom = 15 }, book = "Sample.epub",
+}
 local api = Api.new{
     root = root, lfs = lfs, web_dir = plugin_dir .. "/web",
+    dirs = { fonts = root .. "/../sample-fonts", photos = root .. "/../sample-photos" },
     hooks = {
+        screensaver = function(dir) return { supported = true, active = screensaver_dir == dir } end,
+        useScreensaver = function(dir) screensaver_dir = dir end,
+        reading = function() return reading end,
+        setReading = function(s)
+            reading.font = s.font or reading.font
+            reading.margins = s.margins
+            return reading
+        end,
         changed = function() print("changed") end,
         diskUsage = function(dir)
             local p = io.popen("df -k '" .. dir .. "' | tail -1")

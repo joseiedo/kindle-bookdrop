@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookdrop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/base.css">
+<style>
+.menu {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px;
+  list-style: none; margin: 12px 0 80px; padding: 0;
+}
+.menu a {
+  display: block; height: 100%; padding: 28px 24px; border-radius: 10px;
+  background: var(--sheet); border: 1px solid var(--rule); box-shadow: var(--shadow);
+  color: var(--ink); text-decoration: none; transition: transform .15s, border-color .15s;
+}
+.menu a:hover { transform: translateY(-2px); border-color: var(--ink-soft); }
+.menu svg { width: 32px; height: 32px; color: var(--accent); }
+.menu h2 { font: 600 24px/1.2 var(--serif); margin: 16px 0 6px; }
+.menu p { margin: 0; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>Bookdrop</h1>
+    <p class="subtitle">Manage your Kindle from here.</p>
+  </div>
+</header>
+<main class="wrap">
+  <ul class="menu">
+    <li><a href="/books">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>
+      <h2>Books</h2>
+      <p>Upload, organize and download books. Read your highlights.</p>
+    </a></li>
+    <li><a href="/fonts">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 10 4h1l6 16M6.5 14h8.5"/><path d="M17 20h4"/></svg>
+      <h2>Fonts</h2>
+      <p>Add fonts and choose the default font and margins.</p>
+    </a></li>
+    <li><a href="/photos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+      <h2>Screensaver</h2>
+      <p>Photos to show while the Kindle sleeps.</p>
+    </a></li>
+  </ul>
+</main>
+</body>
+</html>

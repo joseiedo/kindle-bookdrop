@@ -1,6 +1,7 @@
 --[[--
 HTTP routes for Bookdrop: list, upload, download, move, rename, delete books and manage
-folders under a root folder.
+folders under a root folder. Also manages flat file collections (fonts, screensaver
+photos), the screensaver setting and the default reading font and margins.
 
 Kept free of KOReader UI dependencies so it can run on a desktop for testing;
 KOReader-specific behaviour (covers, metadata, sidecar cleanup, file browser
@@ -15,10 +16,22 @@ local BOOK_EXTS = {
     doc = true, docx = true, html = true, htm = true, chm = true,
 }
 
+local COLLECTION_EXTS = {
+    fonts = { ttf = true, otf = true, ttc = true },
+    photos = { jpg = true, jpeg = true, png = true, gif = true, webp = true },
+}
+
 local MIME = {
     html = "text/html; charset=utf-8", js = "application/javascript",
     css = "text/css", svg = "image/svg+xml", png = "image/png",
     json = "application/json; charset=utf-8",
+    jpg = "image/jpeg", jpeg = "image/jpeg", gif = "image/gif", webp = "image/webp",
+    ttf = "font/ttf", otf = "font/otf", ttc = "font/collection",
+}
+
+local PAGES = {
+    ["/"] = "home.html", ["/index.html"] = "home.html", ["/books"] = "index.html",
+    ["/fonts"] = "files.html", ["/photos"] = "files.html", ["/base.css"] = "base.css",
 }
 
 local function extOf(name)
@@ -51,16 +64,29 @@ local function validName(name)
         and not name:find("[/\\%z]") and name:sub(1, 1) ~= "."
 end
 
+--- hooks.reading() result, with its font list encoded as a JSON array
+local function readingResponse(r)
+    local out = {}
+    for k, v in pairs(r) do out[k] = v end
+    out.fonts = json.array(r.fonts)
+    return jsonResponse(200, out)
+end
+
 local Api = {}
 Api.__index = Api
 
---- opts: root, lfs, web_dir, hooks = { bookInfo(abs), coverFile(abs, mtime), queueCovers(list),
+--- opts: root, lfs, web_dir, dirs = { fonts = abs, photos = abs },
+---       hooks = { bookInfo(abs), coverFile(abs, mtime), queueCovers(list),
 ---       deleteBook(abs), moveBook(old_abs, new_abs), folderRenamed(old_abs, new_abs), changed(),
----       diskUsage(root) -> { total, used, free } in bytes, sidecar(abs) -> settings table }
+---       diskUsage(root) -> { total, used, free } in bytes, sidecar(abs) -> settings table,
+---       screensaver() -> { active, supported }, useScreensaver(dir),
+---       reading() -> { fonts, font, margins = { left, right, top, bottom }, book },
+---       setReading({ font, margins, apply_open }) -> same as reading() }
 function Api.new(opts)
     local self = setmetatable(opts, Api)
     self.hooks = self.hooks or {}
     self.root = self.root:gsub("/+$", "")
+    self.dirs = self.dirs or {}
     return self
 end
 
@@ -204,21 +230,75 @@ function Api:storage()
     return usage or json.null
 end
 
+--- Directory and accepted extensions of a collection ("fonts", "photos"), or nil.
+--- Creates the directory on first use.
+function Api:collection(kind)
+    local dir, exts = self.dirs[kind], COLLECTION_EXTS[kind]
+    if not (dir and exts) then return nil end
+    if not self:mode(dir) then
+        local path = dir:sub(1, 1) == "/" and "" or nil
+        for part in dir:gmatch("[^/]+") do
+            path = path and path .. "/" .. part or part
+            if not self:mode(path) then self.lfs.mkdir(path) end
+        end
+    end
+    return dir, exts
+end
+
+--- Absolute path of an existing file in a collection, or nil.
+function Api:collectionFile(kind, name)
+    local dir, exts = self:collection(kind)
+    if not dir or not validName(name) or not exts[extOf(name) or ""] then return nil end
+    local abs = dir .. "/" .. name
+    return self:mode(abs) == "file" and abs or nil
+end
+
+function Api:listCollection(kind)
+    local dir, exts = self:collection(kind)
+    local files = {}
+    local ok, iter, dir_obj = pcall(self.lfs.dir, dir)
+    if not ok then return files end
+    for name in iter, dir_obj do
+        local attr = name:sub(1, 1) ~= "." and exts[extOf(name) or ""] and self.lfs.attributes(dir .. "/" .. name)
+        if attr and attr.mode == "file" then
+            table.insert(files, { name = name, size = attr.size, mtime = attr.modification })
+        end
+    end
+    table.sort(files, function(a, b) return a.name:lower() < b.name:lower() end)
+    return files
+end
+
 --- Called by the server once headers are in, for requests carrying a body.
 function Api:openBody(req)
-    if not (req.method == "PUT" and req.path == "/api/upload") then
+    if req.method ~= "PUT" then return nil end
+    local folder_abs, name, final_path = nil, req.query.name, nil
+    if req.path == "/api/upload" then
+        folder_abs = self:abs(req.query.folder)
+        if not folder_abs or self:mode(folder_abs) ~= "directory" then
+            return nil, text(404, "Folder not found")
+        end
+        if not validName(name) then
+            return nil, text(400, "Invalid file name")
+        end
+        if not BOOK_EXTS[extOf(name) or ""] then
+            return nil, text(415, "Not an ebook file: " .. name)
+        end
+        final_path = function(abs) return abs:sub(#self.root + 2) end
+    elseif req.path == "/api/files/upload" then
+        local exts
+        folder_abs, exts = self:collection(req.query.kind)
+        if not folder_abs then
+            return nil, text(404, "Unknown collection")
+        end
+        if not validName(name) then
+            return nil, text(400, "Invalid file name")
+        end
+        if not exts[extOf(name) or ""] then
+            return nil, text(415, "Unsupported file type: " .. name)
+        end
+        final_path = function(abs) return abs:match("[^/]+$") end
+    else
         return nil
-    end
-    local folder_abs = self:abs(req.query.folder)
-    local name = req.query.name
-    if not folder_abs or self:mode(folder_abs) ~= "directory" then
-        return nil, text(404, "Folder not found")
-    end
-    if not validName(name) then
-        return nil, text(400, "Invalid file name")
-    end
-    if not BOOK_EXTS[extOf(name) or ""] then
-        return nil, text(415, "Not an ebook file: " .. name)
     end
 
     local final_name = self:freeName(folder_abs, name)
@@ -243,8 +323,7 @@ function Api:openBody(req)
                 return text(500, "Cannot save file: " .. tostring(rename_err))
             end
             if api.hooks.changed then api.hooks.changed() end
-            local rel = final_abs:sub(#api.root + 2)
-            return jsonResponse(201, { path = rel, name = final_name })
+            return jsonResponse(201, { path = final_path(final_abs), name = final_name })
         end,
         abort = function()
             if fh then fh:close() fh = nil end
@@ -262,8 +341,40 @@ end
 function Api:handle(req)
     local m, p, q = req.method, req.path, req.query
 
-    if m == "GET" and (p == "/" or p == "/index.html") then
-        return self:serveStatic("index.html")
+    if m == "GET" and PAGES[p] then
+        return self:serveStatic(PAGES[p])
+    end
+
+    if m == "GET" and p == "/api/files" then
+        local dir = self:collection(q.kind)
+        if not dir then return text(404, "Unknown collection") end
+        local result = { dir = dir, files = json.array(self:listCollection(q.kind)) }
+        if q.kind == "photos" then
+            result.screensaver = self.hooks.screensaver and self.hooks.screensaver(dir) or json.null
+        end
+        return jsonResponse(200, result)
+    end
+
+    if m == "GET" and p == "/api/files/raw" then
+        local abs = self:collectionFile(q.kind, q.name)
+        local fh = abs and io.open(abs, "rb")
+        if not fh then return text(404, "Not found") end
+        return { status = 200, type = MIME[extOf(abs)] or "application/octet-stream", file = fh,
+                 headers = { ["Cache-Control"] = "max-age=86400" } }
+    end
+
+    if m == "DELETE" and p == "/api/files" then
+        local abs = self:collectionFile(q.kind, q.name)
+        if not abs then return text(404, "Not found") end
+        if not os.remove(abs) then return text(500, "Could not delete") end
+        return jsonResponse(200, { deleted = q.name })
+    end
+
+    if m == "POST" and p == "/api/screensaver" then
+        local dir = self:collection("photos")
+        if not (dir and self.hooks.useScreensaver) then return text(501, "Not available") end
+        self.hooks.useScreensaver(dir)
+        return jsonResponse(200, self.hooks.screensaver(dir))
     end
 
     if m == "GET" and p == "/api/books" then
@@ -399,6 +510,34 @@ function Api:handle(req)
         if self.hooks.folderRenamed then self.hooks.folderRenamed(abs, new_abs) end
         if self.hooks.changed then self.hooks.changed() end
         return jsonResponse(200, { path = new_rel })
+    end
+
+    if m == "GET" and p == "/api/reading" then
+        if not self.hooks.reading then return text(501, "Not available") end
+        return readingResponse(self.hooks.reading())
+    end
+
+    -- Default font and margins for new books; apply=1 also restyles the book open now
+    if m == "POST" and p == "/api/reading" then
+        if not self.hooks.setReading then return text(501, "Not available") end
+        local current = self.hooks.reading()
+        local font = q.font
+        if font then
+            local known = false
+            for _, f in ipairs(current.fonts) do
+                if f == font then known = true break end
+            end
+            if not known then return text(400, "Unknown font: " .. font) end
+        end
+        local margins = {}
+        for _, side in ipairs{ "left", "right", "top", "bottom" } do
+            local n = tonumber(q[side])
+            if not n or n < 0 or n > 200 or n % 1 ~= 0 then
+                return text(400, "Margins must be whole numbers from 0 to 200")
+            end
+            margins[side] = n
+        end
+        return readingResponse(self.hooks.setReading{ font = font, margins = margins, apply_open = q.apply == "1" })
     end
 
     if p:sub(1, 5) == "/api/" then
