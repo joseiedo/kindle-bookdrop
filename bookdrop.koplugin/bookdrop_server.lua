@@ -10,6 +10,21 @@ Every response is sent with "Connection: close".
 
 local socket = require("socket")
 
+-- Mark a socket close-on-exec. Otherwise every process KOReader spawns while we run
+-- (e.g. the SSH plugin's dropbear, which daemonizes) inherits it and keeps the port
+-- bound after we close it, even across KOReader restarts.
+local cloexec = function() end
+do
+    local ok, ffi = pcall(require, "ffi")
+    if ok then
+        pcall(ffi.cdef, "int fcntl(int fd, int cmd, ...);")
+        local F_SETFD, FD_CLOEXEC = 2, 1 -- same on Linux and macOS
+        cloexec = function(sock)
+            pcall(ffi.C.fcntl, sock:getfd(), F_SETFD, ffi.new("int", FD_CLOEXEC))
+        end
+    end
+end
+
 local CHUNK = 64 * 1024          -- bytes per receive/read
 local SLICE = 0.04               -- seconds of work per UI tick
 local MAX_HEADER = 16 * 1024
@@ -94,6 +109,7 @@ end
 function Server:start()
     local sock, err = socket.bind(self.host, self.port)
     if not sock then return nil, err end
+    cloexec(sock)
     sock:settimeout(0)
     self.sock = sock
     return true
@@ -292,6 +308,7 @@ function Server:waitEvent()
     for _ = 1, 8 do
         local c = self.sock:accept()
         if not c then break end
+        cloexec(c)
         c:settimeout(0)
         self.clients[c] = { sock = c, state = "head", buf = "", t = now }
     end
