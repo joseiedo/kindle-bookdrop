@@ -214,6 +214,12 @@ function hooks.screensaver(dir)
     }
 end
 
+-- Portrait size, which is how the screensaver is shown
+function hooks.screenSize()
+    local w, h = Device.screen:getWidth(), Device.screen:getHeight()
+    return { w = math.min(w, h), h = math.max(w, h) }
+end
+
 function hooks.useScreensaver(dir)
     G_reader_settings:saveSetting("screensaver_type", "random_image")
     G_reader_settings:saveSetting("screensaver_dir", dir)
@@ -302,11 +308,19 @@ function Bookdrop:url()
 end
 
 -- Kindle's own power daemon puts the device to sleep (and drops Wi-Fi)
--- after a few idle minutes; hold it off while serving.
+-- after a few idle minutes (600s by default); keep resetting its idle timer while
+-- serving. Unlike preventScreenSaver, this still lets the power button sleep the
+-- Kindle (which stops the server via onSuspend).
+local function touchPowerd()
+    os.execute("lipc-set-prop com.lab126.powerd touchScreenSaverTimeout 1")
+    UIManager:scheduleIn(60, touchPowerd)
+end
+
 local function keepAwake(on)
     UIManager[on and "preventStandby" or "allowStandby"](UIManager)
     if Device:isKindle() then
-        os.execute("lipc-set-prop com.lab126.powerd preventScreenSaver " .. (on and 1 or 0))
+        UIManager:unschedule(touchPowerd)
+        if on then touchPowerd() end
     end
 end
 

@@ -55,6 +55,25 @@ main { padding: 8px 0 120px; }
 .list.photos li:hover .btn, .list.photos .btn:focus-visible { opacity: 1; }
 @media (hover: none) { .list.photos .btn { opacity: 1; } }
 
+/* Crop dialog */
+dialog.crop {
+  border: 1px solid var(--rule); border-radius: 12px; background: var(--sheet); color: var(--ink);
+  padding: 20px; width: min(440px, calc(100vw - 32px)); box-shadow: var(--shadow);
+}
+dialog.crop::backdrop { background: rgba(20, 22, 26, .55); }
+dialog.crop h2 { font: 600 20px/1.3 var(--serif); margin: 0 0 4px; }
+dialog.crop .hint { color: var(--ink-soft); font-size: 14px; margin: 0 0 14px; overflow-wrap: anywhere; }
+.crop-frame {
+  position: relative; overflow: hidden; margin: 0 auto; width: min(300px, 100%);
+  background: #000; border-radius: 4px; touch-action: none; cursor: grab; user-select: none;
+}
+.crop-frame.dragging { cursor: grabbing; }
+.crop-frame img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; pointer-events: none; }
+.zoom { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; font-size: 14px; color: var(--ink-soft); }
+.zoom input { flex: 1; }
+dialog.crop .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+dialog.crop .actions .btn:first-child { margin-right: auto; }
+
 .empty { text-align: center; color: var(--ink-soft); padding: 64px 16px; border: 1px dashed var(--rule); border-radius: 10px; }
 .empty h2 { font: 600 22px/1.3 var(--serif); color: var(--ink); margin: 0 0 8px; }
 .empty p { margin: 0 auto; max-width: 46ch; }
@@ -98,6 +117,18 @@ main { padding: 8px 0 120px; }
   <p class="progress" id="progress"></p>
   <ul class="list" id="list"></ul>
 </main>
+
+<dialog class="crop" id="crop">
+  <h2>Crop photo <span id="crop-count"></span></h2>
+  <p class="hint">Drag to position, zoom to fit. The frame matches the Kindle's screen (<span id="crop-size"></span>).</p>
+  <div class="crop-frame" id="crop-frame"><img id="crop-img" alt=""></div>
+  <label class="zoom">Zoom <input type="range" id="crop-zoom" min="1" max="4" step="0.01" value="1"></label>
+  <div class="actions">
+    <button class="btn" type="button" data-crop="skip">Skip</button>
+    <button class="btn" type="button" data-crop="whole">Send uncropped</button>
+    <button class="btn primary" type="button" data-crop="crop">Crop and send</button>
+  </div>
+</dialog>
 
 <div class="drop" id="drop"><strong id="drop-label"></strong></div>
 <div class="toast" id="toast" role="status"></div>
@@ -168,7 +199,90 @@ main { padding: 8px 0 120px; }
     return loadedFonts.get(key);
   }
 
+  let screen = null; // Kindle screen size in pixels, from the photos listing
+
+  // Shows the crop dialog for one photo. Resolves to the file to send (cropped to the
+  // Kindle's screen size, or the original), or null to skip it.
+  function cropPhoto(file, index, total) {
+    return new Promise((resolve) => {
+      const dlg = $("crop"), frame = $("crop-frame"), img = $("crop-img"), zoomEl = $("crop-zoom");
+      const url = URL.createObjectURL(file);
+      $("crop-count").textContent = total > 1 ? `(${index + 1} of ${total})` : "";
+      $("crop-size").textContent = `${screen.w} × ${screen.h}`;
+      frame.style.aspectRatio = `${screen.w} / ${screen.h}`;
+      let fw, fh, base, zoom = 1, x = 0, y = 0;
+
+      const clamp = () => {
+        const s = base * zoom;
+        x = Math.min(0, Math.max(fw - img.naturalWidth * s, x));
+        y = Math.min(0, Math.max(fh - img.naturalHeight * s, y));
+        img.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+      };
+      // Zoom around a point in the frame (the center unless given)
+      const setZoom = (z, px = fw / 2, py = fh / 2) => {
+        const k = z / zoom;
+        x = px - (px - x) * k; y = py - (py - y) * k; zoom = z;
+        zoomEl.value = z;
+        clamp();
+      };
+
+      img.onload = () => {
+        fw = frame.clientWidth; fh = frame.clientHeight;
+        base = Math.max(fw / img.naturalWidth, fh / img.naturalHeight); // smallest scale that fills the frame
+        zoom = 1; zoomEl.value = 1;
+        x = (fw - img.naturalWidth * base) / 2; y = (fh - img.naturalHeight * base) / 2;
+        clamp();
+      };
+      img.onerror = () => { toast(`${file.name}: can't read this image`, true); finish(null); };
+      if (!dlg.open) dlg.showModal();
+      img.src = url;
+
+      let drag = null;
+      frame.onpointerdown = (e) => {
+        drag = { px: e.clientX, py: e.clientY, x, y };
+        frame.setPointerCapture(e.pointerId); frame.classList.add("dragging");
+      };
+      frame.onpointermove = (e) => {
+        if (!drag) return;
+        x = drag.x + e.clientX - drag.px; y = drag.y + e.clientY - drag.py;
+        clamp();
+      };
+      frame.onpointerup = frame.onpointercancel = () => { drag = null; frame.classList.remove("dragging"); };
+      frame.onwheel = (e) => {
+        e.preventDefault();
+        const r = frame.getBoundingClientRect();
+        setZoom(Math.min(4, Math.max(1, zoom * Math.exp(-e.deltaY / 400))), e.clientX - r.left, e.clientY - r.top);
+      };
+      zoomEl.oninput = () => setZoom(+zoomEl.value);
+
+      const finish = (result) => {
+        dlg.onclose = null;
+        for (const b of dlg.querySelectorAll("[data-crop]")) b.onclick = null;
+        URL.revokeObjectURL(url);
+        resolve(result);
+      };
+      dlg.onclose = () => finish(null); // Esc
+      for (const b of dlg.querySelectorAll("[data-crop]")) b.onclick = () => {
+        const action = b.dataset.crop;
+        if (action === "skip") return finish(null);
+        if (action === "whole") return finish(file);
+        const s = base * zoom;
+        const canvas = document.createElement("canvas");
+        canvas.width = screen.w; canvas.height = screen.h;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, screen.w, screen.h); // JPEG has no transparency
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, -x / s, -y / s, fw / s, fh / s, 0, 0, screen.w, screen.h);
+        canvas.toBlob((blob) => {
+          const name = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+          finish(blob ? new File([blob], name, { type: "image/jpeg" }) : file);
+        }, "image/jpeg", 0.92);
+      };
+    });
+  }
+
   function render(data) {
+    if (data.screen) screen = data.screen;
     const files = data.files;
     $("subtitle").textContent = files.length
       ? `${files.length} ${files.length === 1 ? "file" : "files"} in ${data.dir}`
@@ -234,13 +348,16 @@ main { padding: 8px 0 120px; }
     if (skipped) toast(`Skipped ${skipped} unsupported ${skipped === 1 ? "file" : "files"}`, true);
     if (!files.length || uploading) return;
     uploading = true;
-    let failed = 0;
-    for (const f of files) {
-      try { await put(f); } catch (e) { failed++; toast(`${f.name}: ${e.message}`, true); }
+    let failed = 0, sent = 0;
+    for (const [i, original] of files.entries()) {
+      const f = kind === "photos" && screen ? await cropPhoto(original, i, files.length) : original;
+      if (!f) continue;
+      try { await put(f); sent++; } catch (e) { failed++; toast(`${f.name}: ${e.message}`, true); }
     }
+    if ($("crop").open) $("crop").close();
     uploading = false;
     $("progress").textContent = "";
-    if (!failed) toast(`Added ${files.length} ${files.length === 1 ? "file" : "files"}`);
+    if (!failed && sent) toast(`Added ${sent} ${sent === 1 ? "file" : "files"}`);
     load();
   }
 

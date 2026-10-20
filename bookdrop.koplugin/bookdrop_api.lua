@@ -79,7 +79,7 @@ Api.__index = Api
 ---       hooks = { bookInfo(abs), coverFile(abs, mtime), queueCovers(list),
 ---       deleteBook(abs), moveBook(old_abs, new_abs), folderRenamed(old_abs, new_abs), changed(),
 ---       diskUsage(root) -> { total, used, free } in bytes, sidecar(abs) -> settings table,
----       screensaver() -> { active, supported }, useScreensaver(dir),
+---       screensaver() -> { active, supported }, useScreensaver(dir), screenSize() -> { w, h },
 ---       reading() -> { fonts, font, margins = { left, right, top, bottom }, book },
 ---       setReading({ font, margins, apply_open }) -> same as reading() }
 function Api.new(opts)
@@ -351,6 +351,7 @@ function Api:handle(req)
         local result = { dir = dir, files = json.array(self:listCollection(q.kind)) }
         if q.kind == "photos" then
             result.screensaver = self.hooks.screensaver and self.hooks.screensaver(dir) or json.null
+            result.screen = self.hooks.screenSize and self.hooks.screenSize() or json.null
         end
         return jsonResponse(200, result)
     end

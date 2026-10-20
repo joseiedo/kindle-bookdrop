@@ -22,6 +22,7 @@ local api = Api.new{
     hooks = {
         screensaver = function(dir) return { supported = true, active = screensaver_dir == dir } end,
         useScreensaver = function(dir) screensaver_dir = dir end,
+        screenSize = function() return { w = 1072, h = 1448 } end,
         reading = function() return reading end,
         setReading = function(s)
             reading.font = s.font or reading.font
